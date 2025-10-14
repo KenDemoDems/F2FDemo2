@@ -1,6 +1,7 @@
 // Google Vision API Integration for Ingredient Detection
 import { uploadImageToStorage } from './firebase';
 import { getEnvVar } from './env';
+import ImageAnnotatorClient from '@google-cloud/vision';
 
 // Types for Google Vision API
 interface VisionLabel {
@@ -22,37 +23,37 @@ interface DetectedIngredient {
 // Food-related keywords for filtering Vision API results
 const FOOD_KEYWORDS = [
   // Fruits
-  'apple', 'banana', 'orange', 'grape', 'strawberry', 'blueberry', 'raspberry', 
-  'blackberry', 'cherry', 'peach', 'pear', 'plum', 'apricot', 'kiwi', 'mango', 
+  'apple', 'banana', 'orange', 'grape', 'strawberry', 'blueberry', 'raspberry',
+  'blackberry', 'cherry', 'peach', 'pear', 'plum', 'apricot', 'kiwi', 'mango',
   'pineapple', 'watermelon', 'cantaloupe', 'honeydew', 'lemon', 'lime', 'grapefruit',
-  
+
   // Vegetables
   'tomato', 'potato', 'onion', 'garlic', 'carrot', 'celery', 'lettuce', 'spinach',
   'broccoli', 'cauliflower', 'cabbage', 'pepper', 'cucumber', 'zucchini', 'eggplant',
   'mushroom', 'corn', 'peas', 'green bean', 'asparagus', 'artichoke', 'avocado',
   'radish', 'turnip', 'beet', 'sweet potato', 'squash', 'pumpkin',
-  
+
   // Proteins
   'chicken', 'beef', 'pork', 'turkey', 'fish', 'salmon', 'tuna', 'shrimp', 'crab',
   'lobster', 'egg', 'tofu', 'beans', 'lentils', 'chickpeas', 'nuts', 'almonds',
   'walnuts', 'peanuts', 'cashews', 'pistachios',
-  
+
   // Dairy
   'milk', 'cheese', 'yogurt', 'butter', 'cream', 'sour cream', 'cottage cheese',
   'mozzarella', 'cheddar', 'parmesan', 'swiss', 'feta', 'goat cheese',
-  
+
   // Grains & Bread
   'bread', 'rice', 'pasta', 'noodles', 'quinoa', 'oats', 'cereal', 'flour',
   'bagel', 'croissant', 'muffin', 'tortilla', 'crackers',
-  
+
   // Herbs & Spices
   'basil', 'oregano', 'thyme', 'rosemary', 'parsley', 'cilantro', 'dill', 'mint',
   'sage', 'bay leaf', 'ginger', 'turmeric', 'cumin', 'paprika', 'cinnamon',
-  
+
   // Condiments & Oils
   'olive oil', 'vegetable oil', 'vinegar', 'soy sauce', 'hot sauce', 'ketchup',
   'mustard', 'mayonnaise', 'salad dressing', 'honey', 'maple syrup', 'jam',
-  
+
   // Beverages
   'juice', 'wine', 'beer', 'coffee', 'tea', 'soda', 'water'
 ];
@@ -70,13 +71,13 @@ const INGREDIENT_CATEGORIES = {
 // Get ingredient category
 const getIngredientCategory = (ingredient: string): string => {
   const lowerIngredient = ingredient.toLowerCase();
-  
+
   for (const [category, items] of Object.entries(INGREDIENT_CATEGORIES)) {
     if (items.some(item => lowerIngredient.includes(item))) {
       return category;
     }
   }
-  
+
   return 'other';
 };
 
@@ -94,7 +95,7 @@ const processVisionResults = (visionResponse: VisionResponse): DetectedIngredien
     const confidence = label.score || label.confidence || 0;
 
     // Check if the label matches any food keywords
-    const matchedKeywords = FOOD_KEYWORDS.filter(keyword => 
+    const matchedKeywords = FOOD_KEYWORDS.filter(keyword =>
       description.includes(keyword) || keyword.includes(description)
     );
 
@@ -102,7 +103,7 @@ const processVisionResults = (visionResponse: VisionResponse): DetectedIngredien
       // Avoid duplicates
       if (!processedNames.has(keyword)) {
         processedNames.add(keyword);
-        
+
         detectedIngredients.push({
           name: keyword.charAt(0).toUpperCase() + keyword.slice(1),
           confidence: confidence,
@@ -116,7 +117,7 @@ const processVisionResults = (visionResponse: VisionResponse): DetectedIngredien
       const capitalizedName = description.charAt(0).toUpperCase() + description.slice(1);
       if (!processedNames.has(description)) {
         processedNames.add(description);
-        
+
         detectedIngredients.push({
           name: capitalizedName,
           confidence: confidence,
@@ -134,29 +135,21 @@ const processVisionResults = (visionResponse: VisionResponse): DetectedIngredien
 
 // Main function to analyze image with Google Vision API
 export const analyzeImageWithGoogleVision = async (
-  file: File, 
+  file: File,
   userId: string
-): Promise<{ ingredients: DetectedIngredient[], error: string | null }> => {
+): Promise<{ ingredients: DetectedIngredient[]; error: string | null }> => {
   try {
     const apiKey = getEnvVar('VITE_GOOGLE_VISION_API_KEY');
-    
+
     if (!apiKey || apiKey === 'demo-google-vision-key') {
       console.log('🔧 Google Vision API not configured, using demo data');
       throw new Error('Google Cloud Vision API key not configured');
     }
 
-    // Upload image to Firebase Storage first
-    const uploadResult = await uploadImageToStorage(file, userId);
-    if (uploadResult.error) {
-      throw new Error(`Image upload failed: ${uploadResult.error}`);
-    }
-
-    // Convert file to base64 for Vision API
     const base64 = await new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => {
         const result = reader.result as string;
-        // Remove data URL prefix
         const base64String = result.split(',')[1];
         resolve(base64String);
       };
@@ -164,49 +157,38 @@ export const analyzeImageWithGoogleVision = async (
       reader.readAsDataURL(file);
     });
 
-    // Prepare Vision API request
     const visionRequest = {
       requests: [
         {
-          image: {
-            content: base64
-          },
+          image: { content: base64 },
           features: [
-            {
-              type: 'LABEL_DETECTION',
-              maxResults: 50
-            },
-            {
-              type: 'OBJECT_LOCALIZATION',
-              maxResults: 20
-            }
+            { type: 'LABEL_DETECTION', maxResults: 50 },
+            { type: 'OBJECT_LOCALIZATION', maxResults: 20 }
           ]
         }
       ]
     };
 
-    // Call Google Vision API
     const response = await fetch(
       `https://vision.googleapis.com/v1/images:annotate?key=${apiKey}`,
       {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(visionRequest)
       }
     );
 
+    const text = await response.text();
+    console.log('Response:', text); // Log raw response for debugging
     if (!response.ok) {
-      throw new Error(`Vision API error: ${response.status} ${response.statusText}`);
+      throw new Error(`Vision API error: ${response.status} ${response.statusText} - ${text}`);
     }
 
     const data = await response.json();
-    
     if (data.responses && data.responses[0]) {
       const visionResponse = data.responses[0];
       const ingredients = processVisionResults(visionResponse);
-      
+
       console.log('🔍 Vision API Results:', {
         totalLabels: visionResponse.labelAnnotations?.length || 0,
         detectedIngredients: ingredients.length,
@@ -217,11 +199,8 @@ export const analyzeImageWithGoogleVision = async (
     } else {
       throw new Error('No response from Vision API');
     }
-
   } catch (error: any) {
     console.error('❌ Google Vision API Error:', error);
-    
-    // Return mock data for development/demo purposes
     const mockIngredients: DetectedIngredient[] = [
       { name: 'Apple', confidence: 0.95, category: 'fruits' },
       { name: 'Tomato', confidence: 0.89, category: 'vegetables' },
@@ -229,10 +208,9 @@ export const analyzeImageWithGoogleVision = async (
       { name: 'Milk', confidence: 0.78, category: 'dairy' },
       { name: 'Bread', confidence: 0.74, category: 'grains' }
     ];
-
-    return { 
-      ingredients: mockIngredients, 
-      error: `Vision API Error (using demo data): ${error.message}` 
+    return {
+      ingredients: mockIngredients,
+      error: `Vision API Error (using demo data): ${error.message}`
     };
   }
 };
@@ -255,7 +233,7 @@ export const reAnalyzeStoredImage = async (
     // Fetch the image from URL
     const response = await fetch(imageUrl);
     const blob = await response.blob();
-    
+
     return analyzeImageBlob(blob, userId);
   } catch (error: any) {
     return { ingredients: [], error: error.message };
@@ -265,7 +243,7 @@ export const reAnalyzeStoredImage = async (
 // Utility function to validate if detected ingredient is food-related
 export const isValidFoodIngredient = (ingredient: string): boolean => {
   const lowerIngredient = ingredient.toLowerCase();
-  return FOOD_KEYWORDS.some(keyword => 
+  return FOOD_KEYWORDS.some(keyword =>
     lowerIngredient.includes(keyword) || keyword.includes(lowerIngredient)
   );
 };
@@ -276,10 +254,10 @@ export const findMissingIngredients = (
   availableIngredients: string[]
 ): string[] => {
   const available = availableIngredients.map(i => i.toLowerCase());
-  
+
   return recipeIngredients.filter(ingredient => {
     const lowerIngredient = ingredient.toLowerCase();
-    return !available.some(available => 
+    return !available.some(available =>
       lowerIngredient.includes(available) || available.includes(lowerIngredient)
     );
   });

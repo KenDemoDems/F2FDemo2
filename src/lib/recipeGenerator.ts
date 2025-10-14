@@ -262,37 +262,38 @@ const RECIPE_DATABASE: Omit<Recipe, 'id' | 'createdAt'>[] = [
 ];
 
 // Calculate ingredient match percentage
-const calculateMatchPercentage = (recipeIngredients: string[], availableIngredients: string[]): number => {
-  const available = availableIngredients.map(i => i.toLowerCase());
+const calculateMatchPercentage = (recipeIngredients: string[], availableIngredients: string[] | undefined | null): number => {
+  // Defensive: Ensure availableIngredients is an array
+  const available = Array.isArray(availableIngredients) ? availableIngredients.map(i => i.toLowerCase()) : [];
   const required = recipeIngredients.map(i => i.toLowerCase());
-  
+
   let matchCount = 0;
-  
+
   required.forEach(ingredient => {
-    const hasMatch = available.some(available => 
-      ingredient.includes(available) || 
+    const hasMatch = available.some(available =>
+      ingredient.includes(available) ||
       available.includes(ingredient) ||
-      // Check for partial matches
       ingredient.split(' ').some(word => available.includes(word)) ||
       available.some(avail => ingredient.includes(avail))
     );
-    
+
     if (hasMatch) {
       matchCount++;
     }
   });
-  
-  return Math.round((matchCount / required.length) * 100);
+
+  return required.length > 0 ? Math.round((matchCount / required.length) * 100) : 0;
 };
 
 // Find missing ingredients
-const findMissingIngredients = (recipeIngredients: string[], availableIngredients: string[]): string[] => {
-  const available = availableIngredients.map(i => i.toLowerCase());
-  
+const findMissingIngredients = (recipeIngredients: string[], availableIngredients: string[] | undefined | null): string[] => {
+  // Defensive: Ensure availableIngredients is an array
+  const available = Array.isArray(availableIngredients) ? availableIngredients.map(i => i.toLowerCase()) : [];
+
   return recipeIngredients.filter(ingredient => {
     const lowerIngredient = ingredient.toLowerCase();
-    return !available.some(available => 
-      lowerIngredient.includes(available) || 
+    return !available.some(available =>
+      lowerIngredient.includes(available) ||
       available.includes(lowerIngredient) ||
       lowerIngredient.split(' ').some(word => available.includes(word))
     );
@@ -301,18 +302,25 @@ const findMissingIngredients = (recipeIngredients: string[], availableIngredient
 
 // Main recipe generation function
 export const generateRecipes = (
-  availableIngredients: string[],
+  availableIngredients: string[] | undefined | null,
   maxRecipes: number = 8,
   minMatchPercentage: number = 30
 ): GeneratedRecipe[] => {
-  console.log('🍳 Generating recipes for ingredients:', availableIngredients);
-  
+  // Defensive: Ensure availableIngredients is an array
+  const ingredients = Array.isArray(availableIngredients) ? availableIngredients : [];
+  console.log('🍳 Generating recipes for ingredients:', ingredients);
+
+  if (ingredients.length === 0) {
+    console.warn('No ingredients provided; returning empty recipe list.');
+    return [];
+  }
+
   const generatedRecipes: GeneratedRecipe[] = [];
-  
+
   RECIPE_DATABASE.forEach(recipe => {
-    const matchPercentage = calculateMatchPercentage(recipe.usedIngredients, availableIngredients);
-    const missingIngredients = findMissingIngredients(recipe.usedIngredients, availableIngredients);
-    
+    const matchPercentage = calculateMatchPercentage(recipe.usedIngredients, ingredients);
+    const missingIngredients = findMissingIngredients(recipe.usedIngredients, ingredients);
+
     if (matchPercentage >= minMatchPercentage) {
       generatedRecipes.push({
         ...recipe,
@@ -321,23 +329,21 @@ export const generateRecipes = (
       });
     }
   });
-  
+
   // Sort by match percentage (highest first) and take top results
   const sortedRecipes = generatedRecipes
     .sort((a, b) => {
-      // Primary sort: match percentage
       if (b.matchPercentage !== a.matchPercentage) {
         return b.matchPercentage - a.matchPercentage;
       }
-      // Secondary sort: fewer missing ingredients
       return a.missingIngredients.length - b.missingIngredients.length;
     })
     .slice(0, maxRecipes);
-  
-  console.log('🎯 Generated recipes:', sortedRecipes.map(r => 
+
+  console.log('🎯 Generated recipes:', sortedRecipes.map(r =>
     `${r.name} (${r.matchPercentage}% match, ${r.missingIngredients.length} missing)`
   ));
-  
+
   return sortedRecipes;
 };
 
@@ -348,39 +354,39 @@ export const generateRecipesByDiet = (
   maxRecipes: number = 8
 ): GeneratedRecipe[] => {
   let filteredDatabase = RECIPE_DATABASE;
-  
+
   // Filter based on dietary preferences
   if (dietaryPreferences.includes('vegetarian')) {
-    filteredDatabase = filteredDatabase.filter(recipe => 
-      !recipe.usedIngredients.some(ingredient => 
+    filteredDatabase = filteredDatabase.filter(recipe =>
+      !recipe.usedIngredients.some(ingredient =>
         ['chicken', 'beef', 'pork', 'turkey', 'fish', 'salmon'].includes(ingredient.toLowerCase())
       )
     );
   }
-  
+
   if (dietaryPreferences.includes('vegan')) {
-    filteredDatabase = filteredDatabase.filter(recipe => 
-      !recipe.usedIngredients.some(ingredient => 
+    filteredDatabase = filteredDatabase.filter(recipe =>
+      !recipe.usedIngredients.some(ingredient =>
         ['egg', 'cheese', 'milk', 'butter', 'yogurt', 'chicken', 'beef', 'pork', 'turkey', 'fish'].includes(ingredient.toLowerCase())
       )
     );
   }
-  
+
   if (dietaryPreferences.includes('low-carb')) {
-    filteredDatabase = filteredDatabase.filter(recipe => 
-      !recipe.usedIngredients.some(ingredient => 
+    filteredDatabase = filteredDatabase.filter(recipe =>
+      !recipe.usedIngredients.some(ingredient =>
         ['rice', 'pasta', 'bread', 'flour', 'potato'].includes(ingredient.toLowerCase())
       )
     );
   }
-  
+
   // Generate recipes from filtered database
   const generatedRecipes: GeneratedRecipe[] = [];
-  
+
   filteredDatabase.forEach(recipe => {
     const matchPercentage = calculateMatchPercentage(recipe.usedIngredients, availableIngredients);
     const missingIngredients = findMissingIngredients(recipe.usedIngredients, availableIngredients);
-    
+
     if (matchPercentage >= 30) {
       generatedRecipes.push({
         ...recipe,
@@ -389,7 +395,7 @@ export const generateRecipesByDiet = (
       });
     }
   });
-  
+
   return generatedRecipes
     .sort((a, b) => b.matchPercentage - a.matchPercentage)
     .slice(0, maxRecipes);
@@ -401,7 +407,7 @@ export const getRecipesForMealPlan = (
   mealType: 'Breakfast' | 'Lunch' | 'Dinner'
 ): GeneratedRecipe[] => {
   let suitableRecipes: string[] = [];
-  
+
   switch (mealType) {
     case 'Breakfast':
       suitableRecipes = ['Egg Bowl', 'Cheese Omelette', 'Fluffy Pancakes', 'Apple Cinnamon Smoothie'];
@@ -413,24 +419,24 @@ export const getRecipesForMealPlan = (
       suitableRecipes = ['Vegetable Stir Fry', 'Tomato Basil Pasta', 'Mushroom Risotto', 'Chicken Caesar Salad'];
       break;
   }
-  
-  const filteredDatabase = RECIPE_DATABASE.filter(recipe => 
+
+  const filteredDatabase = RECIPE_DATABASE.filter(recipe =>
     suitableRecipes.includes(recipe.name)
   );
-  
+
   const generatedRecipes: GeneratedRecipe[] = [];
-  
+
   filteredDatabase.forEach(recipe => {
     const matchPercentage = calculateMatchPercentage(recipe.usedIngredients, availableIngredients);
     const missingIngredients = findMissingIngredients(recipe.usedIngredients, availableIngredients);
-    
+
     generatedRecipes.push({
       ...recipe,
       matchPercentage,
       missingIngredients
     });
   });
-  
+
   return generatedRecipes.sort((a, b) => b.matchPercentage - a.matchPercentage);
 };
 

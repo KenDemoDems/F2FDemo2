@@ -1,53 +1,53 @@
 /*
  * FridgeToFork - AI-Powered Recipe Suggestion App
- * 
+ *
  * 🚀 QUICK START SETUP GUIDE:
  * ===========================
- * 
+ *
  * 1️⃣ ENVIRONMENT SETUP:
  * =====================
  * - Copy .env file to .env.local
  * - Add your API keys to .env.local (see .env for all required variables)
  * - The app will work with demo data until real API keys are added
- * 
+ *
  * 2️⃣ FIREBASE SETUP:
  * ==================
  * Required for: Authentication, Database, Storage, User Management
- * 
+ *
  * Steps:
  * □ Create Firebase project at https://console.firebase.google.com
  * □ Enable Authentication → Sign-in methods → Email/Password + Google
- * □ Enable Firestore Database → Create in production mode
+ * □ Enable Firestore Database
  * □ Enable Storage → Create default bucket
  * □ Add these config values to .env.local:
  *   - VITE_FIREBASE_API_KEY
- *   - VITE_FIREBASE_AUTH_DOMAIN  
+ *   - VITE_FIREBASE_AUTH_DOMAIN
  *   - VITE_FIREBASE_PROJECT_ID
  *   - VITE_FIREBASE_STORAGE_BUCKET
  *   - VITE_FIREBASE_MESSAGING_SENDER_ID
  *   - VITE_FIREBASE_APP_ID
- * 
+ *
  * 3️⃣ GOOGLE VISION API:
  * =====================
  * Required for: Ingredient detection from fridge photos
- * 
+ *
  * Steps:
  * □ Go to https://console.cloud.google.com
  * □ Create new project or select existing
  * □ Enable Cloud Vision API
  * □ Create API Key → Restrict to Vision API
  * □ Add VITE_GOOGLE_VISION_API_KEY to .env.local
- * 
+ *
  * 4️⃣ EMAIL SERVICE (EmailJS):
  * ===========================
  * Required for: Welcome emails, spoiling alerts, recipe suggestions
- * 
+ *
  * Steps:
  * □ Create account at https://www.emailjs.com
  * □ Connect email service (Gmail recommended)
  * □ Create 3 email templates:
  *   - Welcome email for new users
- *   - Spoiling ingredient alerts  
+ *   - Spoiling ingredient alerts
  *   - Recipe suggestions
  * □ Add these values to .env.local:
  *   - VITE_EMAILJS_SERVICE_ID
@@ -55,33 +55,33 @@
  *   - VITE_EMAILJS_TEMPLATE_ID_SPOILING
  *   - VITE_EMAILJS_TEMPLATE_ID_RECIPES
  *   - VITE_EMAILJS_PUBLIC_KEY
- * 
+ *
  * 🔧 CURRENT IMPLEMENTATION STATUS:
  * =================================
  * ✅ Firebase Auth & Database - Fully integrated (lib/firebase.ts)
- * ✅ Google Vision API - Fully integrated (lib/googleVision.ts)  
+ * ✅ Google Vision API - Fully integrated (lib/googleVision.ts)
  * ✅ Email Service - Fully integrated (lib/emailService.ts)
  * ✅ Recipe Generation - Local algorithm implemented (lib/recipeGenerator.ts)
  * ✅ Environment Variables - Safe handling system (lib/env.ts)
- * 
+ *
  * 📱 FEATURES THAT WORK OUT OF THE BOX:
  * ====================================
  * - User authentication (email/password + Google OAuth)
  * - Ingredient detection from photos
  * - Recipe generation based on available ingredients
- * - Inventory management with waste tracking  
+ * - Inventory management with waste tracking
  * - Email notifications for spoiling ingredients
  * - Weekly meal planning
  * - Dark/light mode toggle
  * - Responsive design for all devices
  * - SDG 12 sustainability features
- * 
+ *
  * 🎯 DEMO MODE:
  * ============
  * - Set VITE_DEMO_MODE=true in .env.local to test without real APIs
  * - Use demo credentials: ken@example.com / password123
  * - All features work with mock data for testing
- * 
+ *
  * 💡 DEPLOYMENT NOTES:
  * ===================
  * - Environment variables are automatically loaded
@@ -90,7 +90,7 @@
  * - Ready for deployment to Vercel, Netlify, or any static host
  */
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Upload, Camera, ChefHat, Sparkles, Apple, Carrot, Fish, Clock, Users, ArrowLeft, Refrigerator, X, Eye, EyeOff, Trash2, RotateCcw, Recycle, Package, Calendar, Plus, Star, Heart, Award, Github, Linkedin, Mail, Settings, Bell, BellOff, Moon, Sun, KeyRound, ChevronDown } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Button } from './components/ui/button';
@@ -111,11 +111,11 @@ import imgPngtreeMinimalistScanCodeBorder59220522 from "figma:asset/e1deeedc6479
 import imgImage1 from "figma:asset/c37715fd3b771e06f7d2eedbe414ca92f6f54708.png";
 
 // Integrated Services
-import { 
-  signInWithEmail, 
-  signUpWithEmail, 
-  signInWithGoogle, 
-  logOut, 
+import {
+  signInWithEmail,
+  signUpWithEmail,
+  signInWithGoogle,
+  logOut,
   onAuthStateChange,
   uploadImageToStorage,
   saveDetectedIngredients,
@@ -126,7 +126,10 @@ import {
   getUserInventory,
   updateUserSettings,
   getUserSettings,
-  addManualIngredient
+  addManualIngredient,
+  db,
+  auth,
+  Ingredient
 } from './lib/firebase';
 import { analyzeImageWithGoogleVision } from './lib/googleVision';
 import { generateRecipes, generateRecipesByDiet, getRecipesForMealPlan } from './lib/recipeGenerator';
@@ -147,12 +150,11 @@ interface AuthState {
 
 interface UserSettings {
   notifications: boolean;
-  darkMode: boolean;
 }
 
-function LoginModal({ isOpen, onClose, onLogin, accessFeature }: { 
-  isOpen: boolean; 
-  onClose: () => void; 
+function LoginModal({ isOpen, onClose, onLogin, accessFeature }: {
+  isOpen: boolean;
+  onClose: () => void;
   onLogin: (user: User) => void;
   accessFeature?: string;
 }) {
@@ -168,10 +170,10 @@ function LoginModal({ isOpen, onClose, onLogin, accessFeature }: {
       if (result.error) {
         setError(result.error);
       } else if (result.user) {
-        onLogin({ 
+        onLogin({
           uid: result.user.uid,
           email: result.user.email || '',
-          name: result.user.displayName || 'User'
+          name: result.user.displayName
         });
         onClose();
         setError('');
@@ -188,7 +190,7 @@ function LoginModal({ isOpen, onClose, onLogin, accessFeature }: {
       setError('Passwords do not match');
       return;
     }
-    
+
     try {
       const result = await signUpWithEmail(signupData.email, signupData.password, signupData.name);
       if (result.error) {
@@ -196,11 +198,11 @@ function LoginModal({ isOpen, onClose, onLogin, accessFeature }: {
       } else if (result.user) {
         // Send welcome email
         await sendWelcomeEmail(result.user.email || '', signupData.name);
-        
-        onLogin({ 
+
+        onLogin({
           uid: result.user.uid,
           email: result.user.email || '',
-          name: signupData.name
+          name: result.user.displayName || signupData.name
         });
         onClose();
         setError('');
@@ -217,7 +219,7 @@ function LoginModal({ isOpen, onClose, onLogin, accessFeature }: {
       if (result.error) {
         setError(result.error);
       } else if (result.user) {
-        onLogin({ 
+        onLogin({
           uid: result.user.uid,
           email: result.user.email || '',
           name: result.user.displayName || 'Google User',
@@ -240,8 +242,8 @@ function LoginModal({ isOpen, onClose, onLogin, accessFeature }: {
       } else if (result.user) {
         // Send welcome email for new Google users
         await sendWelcomeEmail(result.user.email || '', result.user.displayName || 'Google User');
-        
-        onLogin({ 
+
+        onLogin({
           uid: result.user.uid,
           email: result.user.email || '',
           name: result.user.displayName || 'Google User',
@@ -264,19 +266,19 @@ function LoginModal({ isOpen, onClose, onLogin, accessFeature }: {
             {accessFeature ? `Access ${accessFeature}` : 'Welcome to FridgeToFork'}
           </DialogTitle>
           <DialogDescription className="text-center text-gray-600 dark:text-gray-300">
-            {accessFeature 
+            {accessFeature
               ? `Please sign in to access ${accessFeature} and unlock all FridgeToFork features.`
               : 'Sign in to your account or create a new one to get started with AI-powered recipe suggestions.'
             }
           </DialogDescription>
         </DialogHeader>
-        
+
         <Tabs defaultValue="login" className="w-full">
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="login">Log In</TabsTrigger>
             <TabsTrigger value="signup">Sign Up</TabsTrigger>
           </TabsList>
-          
+
           <TabsContent value="login" className="space-y-4">
             <form onSubmit={handleLogin} className="space-y-4">
               <div className="space-y-2">
@@ -317,7 +319,7 @@ function LoginModal({ isOpen, onClose, onLogin, accessFeature }: {
                 Log In
               </Button>
             </form>
-            
+
             <div className="relative">
               <div className="absolute inset-0 flex items-center">
                 <span className="w-full border-t border-gray-300" />
@@ -328,7 +330,7 @@ function LoginModal({ isOpen, onClose, onLogin, accessFeature }: {
             </div>
 
             {/* Google Login Button */}
-            <Button 
+            <Button
               type="button"
               variant="outline"
               className="w-full border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800 dark:text-gray-200"
@@ -342,15 +344,15 @@ function LoginModal({ isOpen, onClose, onLogin, accessFeature }: {
               </svg>
               Continue with Google
             </Button>
-            
+
             <div className="text-center text-sm text-gray-500">
               Demo: ken@example.com / password123
             </div>
           </TabsContent>
-          
+
           <TabsContent value="signup" className="space-y-4">
             {/* Google Signup Button */}
-            <Button 
+            <Button
               type="button"
               variant="outline"
               className="w-full border-gray-300 hover:bg-gray-50"
@@ -364,7 +366,7 @@ function LoginModal({ isOpen, onClose, onLogin, accessFeature }: {
               </svg>
               Sign up with Google
             </Button>
-            
+
             <div className="relative">
               <div className="absolute inset-0 flex items-center">
                 <span className="w-full border-t border-gray-300" />
@@ -462,22 +464,22 @@ function ScrollIndicator() {
       const scrollTop = window.scrollY;
       const docHeight = document.documentElement.scrollHeight - window.innerHeight;
       const progress = Math.min(scrollTop / docHeight, 1);
-      
+
       setScrollProgress(progress);
-      
+
       // Show indicator when user starts scrolling
       if (scrollTop > 50 && !hasScrolled) {
         setHasScrolled(true);
         setIsVisible(true);
       }
-      
+
       // Show indicator when scrolling
       if (hasScrolled) {
         setIsVisible(true);
-        
+
         // Clear existing timeout
         clearTimeout(timeoutId);
-        
+
         // Hide after 2 seconds of no scrolling
         timeoutId = setTimeout(() => {
           setIsVisible(false);
@@ -495,7 +497,7 @@ function ScrollIndicator() {
   if (!hasScrolled || !isVisible) return null;
 
   return (
-    <motion.div 
+    <motion.div
       className="fixed left-8 top-1/2 -translate-y-1/2 z-40 hidden lg:block"
       initial={{ opacity: 0, x: -20 }}
       animate={{ opacity: 1, x: 0 }}
@@ -505,11 +507,11 @@ function ScrollIndicator() {
       <div className="relative h-96">
         {/* String/Line */}
         <div className="absolute left-1/2 top-0 w-0.5 h-full bg-gray-300 -translate-x-1/2"></div>
-        
+
         {/* Moving Circle */}
-        <motion.div 
+        <motion.div
           className="absolute left-1/2 w-4 h-4 bg-emerald-500 rounded-full -translate-x-1/2 shadow-lg"
-          style={{ 
+          style={{
             top: `${scrollProgress * (384 - 16)}px`,
             boxShadow: '0 0 20px rgba(16, 185, 129, 0.3)'
           }}
@@ -518,7 +520,7 @@ function ScrollIndicator() {
         >
           <div className="absolute inset-0 bg-emerald-400 rounded-full animate-ping opacity-75"></div>
         </motion.div>
-        
+
         {/* Progress markers */}
         <div className="absolute left-1/2 top-0 w-2 h-2 bg-gray-400 rounded-full -translate-x-1/2"></div>
         <div className="absolute left-1/2 bottom-0 w-2 h-2 bg-gray-400 rounded-full -translate-x-1/2"></div>
@@ -527,10 +529,10 @@ function ScrollIndicator() {
   );
 }
 
-function Navbar({ auth, onShowLogin, onLogout, onNavigate, setShowLoginModal, setLoginAccessFeature, userSettings, onSettingsChange }: { 
-  auth: AuthState; 
-  onShowLogin: () => void; 
-  onLogout: () => void; 
+function Navbar({ auth, onShowLogin, onLogout, onNavigate, setShowLoginModal, setLoginAccessFeature, userSettings, onSettingsChange }: {
+  auth: AuthState;
+  onShowLogin: () => void;
+  onLogout: () => void;
   onNavigate?: (page: string) => void;
   setShowLoginModal?: (show: boolean) => void;
   setLoginAccessFeature?: (feature: string | undefined) => void;
@@ -550,7 +552,7 @@ function Navbar({ auth, onShowLogin, onLogout, onNavigate, setShowLoginModal, se
                 FridgeToFork
               </span>
             </div>
-            
+
             {/* Desktop Navigation */}
             <div className="hidden md:flex items-center space-x-8">
               <button onClick={() => onNavigate?.('home')} className="text-gray-700 dark:text-gray-200 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors font-medium">Home</button>
@@ -561,8 +563,8 @@ function Navbar({ auth, onShowLogin, onLogout, onNavigate, setShowLoginModal, se
 
             {/* Mobile Navigation */}
             <div className="md:hidden">
-              <Button 
-                variant="ghost" 
+              <Button
+                variant="ghost"
                 className="p-2"
                 onClick={() => setIsDropdownOpen(!isDropdownOpen)}
               >
@@ -571,8 +573,8 @@ function Navbar({ auth, onShowLogin, onLogout, onNavigate, setShowLoginModal, se
 
               {isDropdownOpen && (
                 <>
-                  <div 
-                    className="fixed inset-0 z-40" 
+                  <div
+                    className="fixed inset-0 z-40"
                     onClick={() => setIsDropdownOpen(false)}
                   />
                   <motion.div
@@ -582,25 +584,25 @@ function Navbar({ auth, onShowLogin, onLogout, onNavigate, setShowLoginModal, se
                     transition={{ duration: 0.1 }}
                     className="absolute right-0 top-12 w-48 bg-white dark:glass rounded-lg shadow-xl border border-gray-200 dark:border-white/10 py-2 z-50"
                   >
-                    <button 
+                    <button
                       onClick={() => { onNavigate?.('home'); setIsDropdownOpen(false); }}
                       className="w-full px-4 py-2 text-left text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
                     >
                       Home
                     </button>
-                    <button 
+                    <button
                       onClick={() => { onNavigate?.('inventory'); setIsDropdownOpen(false); }}
                       className="w-full px-4 py-2 text-left text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
                     >
                       Inventory
                     </button>
-                    <button 
+                    <button
                       onClick={() => { onNavigate?.('meal-plan'); setIsDropdownOpen(false); }}
                       className="w-full px-4 py-2 text-left text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
                     >
                       Meal Plan
                     </button>
-                    <button 
+                    <button
                       onClick={() => { onNavigate?.('about'); setIsDropdownOpen(false); }}
                       className="w-full px-4 py-2 text-left text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
                     >
@@ -610,16 +612,16 @@ function Navbar({ auth, onShowLogin, onLogout, onNavigate, setShowLoginModal, se
                 </>
               )}
             </div>
-            
+
             <div className="flex items-center space-x-4">
               <span className="text-gray-700 dark:text-gray-200 font-medium hidden sm:inline">
                 {auth.user?.name}
               </span>
-              
+
               {/* User Settings Dropdown */}
               <div className="relative">
-                <Button 
-                  variant="ghost" 
+                <Button
+                  variant="ghost"
                   className="relative h-10 w-10 rounded-full bg-emerald-100 dark:glass border-2 border-emerald-200 dark:border-emerald-500/30 hover:bg-emerald-200 dark:hover:glass-strong transition-colors p-0 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   onClick={() => setIsDropdownOpen(!isDropdownOpen)}
                 >
@@ -632,11 +634,11 @@ function Navbar({ auth, onShowLogin, onLogout, onNavigate, setShowLoginModal, se
                 {isDropdownOpen && (
                   <>
                     {/* Overlay to close dropdown when clicking outside */}
-                    <div 
-                      className="fixed inset-0 z-40" 
+                    <div
+                      className="fixed inset-0 z-40"
                       onClick={() => setIsDropdownOpen(false)}
                     />
-                    
+
                     {/* Dropdown Content */}
                     <motion.div
                       initial={{ opacity: 0, scale: 0.95, y: -5 }}
@@ -650,7 +652,7 @@ function Navbar({ auth, onShowLogin, onLogout, onNavigate, setShowLoginModal, se
                         <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{auth.user?.name || 'User'}</p>
                         <p className="text-xs text-gray-500 dark:text-gray-400">{auth.user?.email || 'user@example.com'}</p>
                       </div>
-                      
+
                       {/* Settings Section */}
                       <div className="px-4 py-2 space-y-2">
                         {/* Email Notifications Toggle */}
@@ -661,31 +663,17 @@ function Navbar({ auth, onShowLogin, onLogout, onNavigate, setShowLoginModal, se
                           </div>
                           <Switch
                             checked={userSettings.notifications}
-                            onCheckedChange={(checked) => 
+                            onCheckedChange={(checked) =>
                               onSettingsChange({ ...userSettings, notifications: checked })
                             }
                           />
                         </div>
-                        
-                        {/* Dark Mode Toggle */}
-                        <div className="flex items-center justify-between py-2">
-                          <div className="flex items-center space-x-2">
-                            {userSettings.darkMode ? <Moon className="h-4 w-4 text-emerald-500 dark:text-emerald-400" /> : <Sun className="h-4 w-4 text-gray-600 dark:text-gray-400" />}
-                            <span className="text-sm text-gray-700 dark:text-gray-200">Dark Mode</span>
-                          </div>
-                          <Switch
-                            checked={userSettings.darkMode}
-                            onCheckedChange={(checked) => 
-                              onSettingsChange({ ...userSettings, darkMode: checked })
-                            }
-                          />
-                        </div>
                       </div>
-                      
+
                       <div className="border-t border-gray-100 dark:border-white/10 my-1"></div>
-                      
+
                       {/* Reset Password */}
-                      <button 
+                      <button
                         className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5 flex items-center transition-colors"
                         onClick={() => {
                           setIsDropdownOpen(false);
@@ -696,11 +684,11 @@ function Navbar({ auth, onShowLogin, onLogout, onNavigate, setShowLoginModal, se
                         <KeyRound className="mr-2 h-4 w-4" />
                         Reset Password
                       </button>
-                      
+
                       <div className="border-t border-gray-100 dark:border-white/10 my-1"></div>
-                      
+
                       {/* Logout */}
-                      <button 
+                      <button
                         className="w-full px-4 py-2 text-left text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/20 flex items-center transition-colors"
                         onClick={() => {
                           setIsDropdownOpen(false);
@@ -732,7 +720,7 @@ function Navbar({ auth, onShowLogin, onLogout, onNavigate, setShowLoginModal, se
               FridgeToFork
             </span>
           </div>
-          
+
           {/* Desktop Navigation */}
           <div className="hidden md:flex items-center space-x-8">
             <button onClick={() => onNavigate?.('home')} className="text-gray-700 dark:text-gray-200 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors font-medium">Home</button>
@@ -747,8 +735,8 @@ function Navbar({ auth, onShowLogin, onLogout, onNavigate, setShowLoginModal, se
           <div className="flex items-center space-x-2">
             {/* Mobile Navigation */}
             <div className="md:hidden relative">
-              <Button 
-                variant="ghost" 
+              <Button
+                variant="ghost"
                 className="p-2"
                 onClick={() => setIsDropdownOpen(!isDropdownOpen)}
               >
@@ -757,8 +745,8 @@ function Navbar({ auth, onShowLogin, onLogout, onNavigate, setShowLoginModal, se
 
               {isDropdownOpen && (
                 <>
-                  <div 
-                    className="fixed inset-0 z-40" 
+                  <div
+                    className="fixed inset-0 z-40"
                     onClick={() => setIsDropdownOpen(false)}
                   />
                   <motion.div
@@ -768,23 +756,23 @@ function Navbar({ auth, onShowLogin, onLogout, onNavigate, setShowLoginModal, se
                     transition={{ duration: 0.1 }}
                     className="absolute right-0 top-12 w-48 bg-white dark:glass rounded-lg shadow-xl border border-gray-200 dark:border-white/10 py-2 z-50"
                   >
-                    <button 
+                    <button
                       onClick={() => { onNavigate?.('home'); setIsDropdownOpen(false); }}
                       className="w-full px-4 py-2 text-left text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
                     >
                       Home
                     </button>
-                    <button 
-                      onClick={() => { 
+                    <button
+                      onClick={() => {
                         setLoginAccessFeature?.('Meal Plan');
                         setShowLoginModal?.(true);
-                        setIsDropdownOpen(false); 
+                        setIsDropdownOpen(false);
                       }}
                       className="w-full px-4 py-2 text-left text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
                     >
                       Meal Plan
                     </button>
-                    <button 
+                    <button
                       onClick={() => { onNavigate?.('about'); setIsDropdownOpen(false); }}
                       className="w-full px-4 py-2 text-left text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
                     >
@@ -794,9 +782,9 @@ function Navbar({ auth, onShowLogin, onLogout, onNavigate, setShowLoginModal, se
                 </>
               )}
             </div>
-            
-            <Button 
-              variant="outline" 
+
+            <Button
+              variant="outline"
               className="bg-white/50 dark:glass hover:bg-white/80 dark:hover:glass-strong transition-all border-emerald-200 dark:border-emerald-500/30 text-emerald-700 dark:text-emerald-300 hover:text-emerald-800 dark:hover:text-emerald-200"
               onClick={onShowLogin}
             >
@@ -814,7 +802,7 @@ function HeroSection() {
     <section className="relative min-h-screen flex items-center justify-center overflow-hidden bg-gradient-to-br from-emerald-50 via-teal-50 to-green-50 dark:bg-gradient-to-br dark:from-gray-900 dark:via-emerald-950/20 dark:to-teal-950/20">
       {/* Animated Background Elements */}
       <div className="absolute inset-0 overflow-hidden">
-        <motion.div 
+        <motion.div
           className="absolute -top-40 -right-40 w-80 h-80 bg-emerald-200/30 dark:floating-orb-1 rounded-full blur-3xl"
           animate={{
             x: [0, 50, 0],
@@ -827,7 +815,7 @@ function HeroSection() {
             ease: "easeInOut",
           }}
         ></motion.div>
-        <motion.div 
+        <motion.div
           className="absolute -bottom-40 -left-40 w-96 h-96 bg-teal-200/30 dark:floating-orb-2 rounded-full blur-3xl"
           animate={{
             x: [0, -40, 0],
@@ -840,7 +828,7 @@ function HeroSection() {
             ease: "easeInOut",
           }}
         ></motion.div>
-        <motion.div 
+        <motion.div
           className="absolute top-1/3 left-1/4 w-64 h-64 bg-green-200/20 dark:floating-orb-3 rounded-full blur-2xl"
           animate={{
             x: [0, 30, 0],
@@ -882,16 +870,16 @@ function HeroSection() {
                 <br />
                 <span className="text-gray-700 dark:text-gray-200">Simplify Eating.</span>
               </h1>
-              
+
               <p className="text-base sm:text-lg text-gray-600 dark:text-gray-300 leading-relaxed max-w-lg mx-auto lg:mx-0">
-                Transform your leftovers into delicious meals with our AI-powered recipe suggestions. 
+                Transform your leftovers into delicious meals with our AI-powered recipe suggestions.
                 Just snap a photo of your fridge and discover what you can cook today.
               </p>
             </div>
-            
+
             <div className="pt-2">
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 className="border-gray-300 dark:border-emerald-500/30 text-gray-700 dark:text-emerald-300 hover:bg-gray-50 dark:hover:bg-emerald-500/10 transition-colors"
                 onClick={() => {
                   // Trigger login modal to get started
@@ -907,11 +895,11 @@ function HeroSection() {
           {/* Right Content - Hero Image */}
           <div className="relative">
             <div className="relative z-10">
-              <img 
-                src={imgGeminiGeneratedImageTr9Lmtr9Lmtr9Lmt1} 
+              <img
+                src={imgGeminiGeneratedImageTr9Lmtr9Lmtr9Lmt1}
                 alt="AI analyzing fridge contents"
                 className="w-full h-auto object-cover"
-                style={{ 
+                style={{
                   mixBlendMode: 'multiply',
                   filter: 'contrast(1.1) brightness(1.1)'
                 }}
@@ -937,7 +925,7 @@ function SDG12Section() {
 
       {/* Decorative Graphics */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
-        <motion.div 
+        <motion.div
           className="absolute top-20 left-10 opacity-10"
           animate={{
             rotate: [0, 360],
@@ -951,7 +939,7 @@ function SDG12Section() {
         >
           <Recycle className="w-24 h-24 text-emerald-600" />
         </motion.div>
-        <motion.div 
+        <motion.div
           className="absolute top-32 right-20 opacity-10"
           animate={{
             y: [0, -20, 0],
@@ -965,7 +953,7 @@ function SDG12Section() {
         >
           <Award className="w-16 h-16 text-emerald-600" />
         </motion.div>
-        <motion.div 
+        <motion.div
           className="absolute bottom-20 left-1/4 opacity-10"
           animate={{
             rotate: [45, 65, 45],
@@ -979,7 +967,7 @@ function SDG12Section() {
         >
           <Apple className="w-20 h-20 text-emerald-600" />
         </motion.div>
-        <motion.div 
+        <motion.div
           className="absolute bottom-32 right-1/4 opacity-10"
           animate={{
             scale: [1, 1.2, 1],
@@ -1033,7 +1021,7 @@ function SDG12Section() {
             Responsible Consumption and Production
           </h3>
           <p className="text-xl text-gray-600 dark:text-gray-300 max-w-3xl mx-auto leading-relaxed">
-            FridgeToFork is committed to ensuring sustainable consumption and production patterns 
+            FridgeToFork is committed to ensuring sustainable consumption and production patterns
             by transforming how households manage food resources.
           </p>
         </div>
@@ -1055,7 +1043,7 @@ function SDG12Section() {
                   Reduce Food Waste
                 </h3>
                 <p className="text-gray-600 dark:text-gray-300 leading-relaxed">
-                  Our AI helps you use existing ingredients before they spoil, reducing the 
+                  Our AI helps you use existing ingredients before they spoil, reducing the
                   1.3 billion tons of food wasted globally each year.
                 </p>
               </CardContent>
@@ -1077,7 +1065,7 @@ function SDG12Section() {
                   Smart Resource Use
                 </h3>
                 <p className="text-gray-600 dark:text-gray-300 leading-relaxed">
-                  Optimize ingredient usage through intelligent recipe suggestions that maximize 
+                  Optimize ingredient usage through intelligent recipe suggestions that maximize
                   value from every item in your fridge.
                 </p>
               </CardContent>
@@ -1099,7 +1087,7 @@ function SDG12Section() {
                   Sustainable Habits
                 </h3>
                 <p className="text-gray-600 dark:text-gray-300 leading-relaxed">
-                  Foster conscious consumption patterns through meal planning and inventory 
+                  Foster conscious consumption patterns through meal planning and inventory
                   management that benefits both families and the environment.
                 </p>
               </CardContent>
@@ -1107,40 +1095,6 @@ function SDG12Section() {
           </motion.div>
         </div>
 
-        {/* Impact Statement */}
-        <Card className="bg-gradient-to-r from-emerald-600 to-teal-600 dark:from-emerald-700 dark:to-teal-700 border-0 shadow-2xl">
-          <CardContent className="p-12 text-center text-white">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.6, delay: 0.4 }}
-            >
-              <div className="flex items-center justify-center space-x-4 mb-6">
-                <Award className="w-10 h-10" />
-                <h3 className="text-3xl font-bold">Our Commitment to SDG 12</h3>
-                <Sparkles className="w-10 h-10" />
-              </div>
-              <p className="text-xl leading-relaxed max-w-4xl mx-auto mb-8">
-                "By 2030, substantially reduce waste generation through prevention, reduction, 
-                recycling and reuse" - UN SDG Target 12.5
-              </p>
-              <div className="grid md:grid-cols-3 gap-8 text-center">
-                <div>
-                  <div className="text-4xl font-bold mb-2">30%</div>
-                  <div className="text-emerald-100">Average Food Waste Reduction</div>
-                </div>
-                <div>
-                  <div className="text-4xl font-bold mb-2">50K+</div>
-                  <div className="text-emerald-100">Meals Optimized Monthly</div>
-                </div>
-                <div>
-                  <div className="text-4xl font-bold mb-2">$2M+</div>
-                  <div className="text-emerald-100">Saved in Food Costs</div>
-                </div>
-              </div>
-            </motion.div>
-          </CardContent>
-        </Card>
 
         {/* Call to Action */}
         <div className="text-center mt-16">
@@ -1153,11 +1107,11 @@ function SDG12Section() {
               Join the Movement for Sustainable Consumption
             </h3>
             <p className="text-lg text-gray-600 dark:text-gray-300 mb-8 max-w-2xl mx-auto">
-              Every meal you optimize contributes to a more sustainable future. 
+              Every meal you optimize contributes to a more sustainable future.
               Start making a difference today with FridgeToFork.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Button 
+              <Button
                 className="bg-emerald-600 hover:bg-emerald-700 dark:emerald-gradient dark:hover:brightness-110 text-white transform hover:scale-105 transition-all px-8 py-3"
                 onClick={() => {
                   document.querySelector('nav button')?.click(); // Trigger login modal
@@ -1166,8 +1120,8 @@ function SDG12Section() {
                 <Heart className="w-5 h-5 mr-2" />
                 Start Your Sustainable Journey
               </Button>
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 className="border-emerald-200 dark:border-emerald-500/30 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 px-8 py-3"
               >
                 <Award className="w-5 h-5 mr-2" />
@@ -1235,8 +1189,8 @@ function RecipeDetail({ recipe, onBack }: { recipe: any; onBack: () => void }) {
   return (
     <div className="min-h-screen bg-white">
       <div className="max-w-6xl mx-auto px-6 py-8">
-        <Button 
-          variant="ghost" 
+        <Button
+          variant="ghost"
           onClick={onBack}
           className="mb-6 hover:bg-emerald-50"
         >
@@ -1247,13 +1201,13 @@ function RecipeDetail({ recipe, onBack }: { recipe: any; onBack: () => void }) {
         <div className="max-w-4xl mx-auto">
           <div className="grid lg:grid-cols-2 gap-8 mb-8">
             <div>
-              <img 
-                src={recipe.image} 
+              <img
+                src={recipe.image}
                 alt={recipe.name}
                 className="w-full h-64 object-cover rounded-xl shadow-lg"
               />
             </div>
-            
+
             <div className="space-y-6">
               <div>
                 <h1 className="text-4xl font-bold text-gray-900 mb-4">{recipe.name}</h1>
@@ -1261,7 +1215,7 @@ function RecipeDetail({ recipe, onBack }: { recipe: any; onBack: () => void }) {
                   {recipe.difficulty}
                 </Badge>
               </div>
-              
+
               <div className="grid grid-cols-3 gap-4">
                 <div className="text-center p-4 bg-gray-50 rounded-lg">
                   <Users className="w-6 h-6 mx-auto mb-2 text-emerald-600" />
@@ -1323,10 +1277,10 @@ function RecipeDetail({ recipe, onBack }: { recipe: any; onBack: () => void }) {
 
 function MealPlanPage() {
   const [selectedMeal, setSelectedMeal] = useState<{ day: string; type: string; meal: any } | null>(null);
-  
+
   const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
   const mealTypes = ['Breakfast', 'Lunch', 'Dinner'];
-  
+
   const [mealPlan, setMealPlan] = useState<Record<string, Record<string, any>>>({
     Monday: {
       Breakfast: { name: 'Cheese Omelette', image: imgImage8, time: '12 min' },
@@ -1376,7 +1330,7 @@ function MealPlanPage() {
     <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-teal-50 to-green-50 relative overflow-hidden">
       {/* Background animations */}
       <div className="absolute inset-0 overflow-hidden">
-        <motion.div 
+        <motion.div
           className="absolute -top-40 -right-40 w-80 h-80 bg-emerald-200/20 rounded-full blur-3xl"
           animate={{
             x: [0, 50, 0],
@@ -1389,7 +1343,7 @@ function MealPlanPage() {
             ease: "easeInOut",
           }}
         />
-        <motion.div 
+        <motion.div
           className="absolute -bottom-40 -left-40 w-96 h-96 bg-teal-200/20 rounded-full blur-3xl"
           animate={{
             x: [0, -40, 0],
@@ -1436,11 +1390,11 @@ function MealPlanPage() {
                   <h3 className="font-bold text-gray-900 text-center pb-2 border-b border-gray-200 text-sm lg:text-base">
                     {day}
                   </h3>
-                  
+
                   {mealTypes.map((mealType) => (
                     <div key={`${day}-${mealType}`} className="space-y-2">
                       <h4 className="text-sm font-medium text-gray-600">{mealType}</h4>
-                      
+
                       {mealPlan[day][mealType] ? (
                         <motion.div
                           initial={{ opacity: 0, scale: 0.9 }}
@@ -1449,7 +1403,7 @@ function MealPlanPage() {
                         >
                           <Card className="bg-gradient-to-r from-emerald-100 to-teal-100 border-0 shadow-sm hover:shadow-md transition-all duration-300">
                             <CardContent className="p-2 sm:p-3">
-                              <img 
+                              <img
                                 src={mealPlan[day][mealType].image}
                                 alt={mealPlan[day][mealType].name}
                                 className="w-full h-12 sm:h-16 object-cover rounded mb-1 sm:mb-2"
@@ -1472,7 +1426,7 @@ function MealPlanPage() {
                           </Card>
                         </motion.div>
                       ) : (
-                        <Card 
+                        <Card
                           className="border-2 border-dashed border-gray-300 hover:border-emerald-300 transition-colors cursor-pointer bg-white/50"
                           onClick={() => setSelectedMeal({ day, type: mealType, meal: null })}
                         >
@@ -1502,16 +1456,16 @@ function MealPlanPage() {
                   Choose a recipe from your available options to add to your meal plan.
                 </DialogDescription>
               </DialogHeader>
-              
+
               <div className="grid gap-4">
                 {availableRecipes.map((recipe) => (
-                  <Card 
+                  <Card
                     key={recipe.name}
                     className="cursor-pointer hover:shadow-md transition-all duration-300 border-2 hover:border-emerald-300"
                     onClick={() => handleMealAssign(selectedMeal.day, selectedMeal.type, recipe)}
                   >
                     <CardContent className="p-4 flex items-center space-x-4">
-                      <img 
+                      <img
                         src={recipe.image}
                         alt={recipe.name}
                         className="w-16 h-16 object-cover rounded"
@@ -1541,7 +1495,7 @@ function MealPlanPage() {
               <p className="text-sm text-gray-600">This week</p>
             </CardContent>
           </Card>
-          
+
           <Card className="bg-white/90 backdrop-blur-lg shadow-xl border-0">
             <CardContent className="p-6 text-center">
               <ChefHat className="w-8 h-8 text-emerald-600 mx-auto mb-3" />
@@ -1550,7 +1504,7 @@ function MealPlanPage() {
               <p className="text-sm text-gray-600">Meals scheduled</p>
             </CardContent>
           </Card>
-          
+
           <Card className="bg-white/90 backdrop-blur-lg shadow-xl border-0">
             <CardContent className="p-6 text-center">
               <Apple className="w-8 h-8 text-emerald-600 mx-auto mb-3" />
@@ -1591,7 +1545,7 @@ function AboutPage({ auth, onNavigate }: { auth?: AuthState; onNavigate?: (page:
     <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-teal-50 to-green-50 relative overflow-hidden">
       {/* Background animations */}
       <div className="absolute inset-0 overflow-hidden">
-        <motion.div 
+        <motion.div
           className="absolute -top-40 -right-40 w-80 h-80 bg-emerald-200/20 rounded-full blur-3xl"
           animate={{
             x: [0, 50, 0],
@@ -1604,7 +1558,7 @@ function AboutPage({ auth, onNavigate }: { auth?: AuthState; onNavigate?: (page:
             ease: "easeInOut",
           }}
         />
-        <motion.div 
+        <motion.div
           className="absolute -bottom-40 -left-40 w-96 h-96 bg-teal-200/20 rounded-full blur-3xl"
           animate={{
             x: [0, -40, 0],
@@ -1635,8 +1589,8 @@ function AboutPage({ auth, onNavigate }: { auth?: AuthState; onNavigate?: (page:
       <div className="max-w-6xl mx-auto px-6 py-8 relative z-10">
         {/* Back Button */}
         <div className="mb-8">
-          <Button 
-            variant="ghost" 
+          <Button
+            variant="ghost"
             onClick={() => onNavigate?.(auth?.isLoggedIn ? 'home' : 'home')}
             className="hover:bg-emerald-50 text-emerald-700"
           >
@@ -1657,7 +1611,7 @@ function AboutPage({ auth, onNavigate }: { auth?: AuthState; onNavigate?: (page:
                 About FridgeToFork
               </span>
             </h1>
-            
+
             <div className="flex items-center justify-center space-x-3 mb-8">
               <ChefHat className="w-12 h-12 text-emerald-600" />
               <span className="text-3xl font-bold bg-gradient-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent">
@@ -1674,24 +1628,24 @@ function AboutPage({ auth, onNavigate }: { auth?: AuthState; onNavigate?: (page:
               <div>
                 <h2 className="text-2xl font-bold text-gray-900 mb-6">Our Mission</h2>
                 <p className="text-gray-600 mb-4 leading-relaxed">
-                  FridgeToFork transforms the way you cook by turning your available ingredients into delicious meals. 
-                  Using advanced AI technology, we analyze your fridge contents and suggest personalized recipes that 
+                  FridgeToFork transforms the way you cook by turning your available ingredients into delicious meals.
+                  Using advanced AI technology, we analyze your fridge contents and suggest personalized recipes that
                   minimize food waste while maximizing flavor.
                 </p>
                 <p className="text-gray-600 mb-4 leading-relaxed">
-                  Our platform makes meal planning effortless, helps you discover new recipes, and encourages 
-                  sustainable cooking practices. From busy families to cooking enthusiasts, FridgeToFork adapts 
+                  Our platform makes meal planning effortless, helps you discover new recipes, and encourages
+                  sustainable cooking practices. From busy families to cooking enthusiasts, FridgeToFork adapts
                   to your lifestyle and dietary preferences.
                 </p>
                 <div className="bg-emerald-50 border-l-4 border-emerald-400 p-4 rounded-r-lg">
                   <p className="text-emerald-800 leading-relaxed">
-                    <strong>Supporting SDG 12:</strong> We're committed to ensuring sustainable consumption and production patterns 
-                    by helping households reduce food waste, optimize ingredient usage, and make more conscious cooking decisions 
+                    <strong>Supporting SDG 12:</strong> We're committed to ensuring sustainable consumption and production patterns
+                    by helping households reduce food waste, optimize ingredient usage, and make more conscious cooking decisions
                     that benefit both families and the environment.
                   </p>
                 </div>
               </div>
-              
+
               <div className="space-y-6">
                 <div className="flex items-center space-x-4 p-4 bg-emerald-50 rounded-lg">
                   <Camera className="w-8 h-8 text-emerald-600" />
@@ -1700,7 +1654,7 @@ function AboutPage({ auth, onNavigate }: { auth?: AuthState; onNavigate?: (page:
                     <p className="text-sm text-gray-600">AI-powered ingredient detection</p>
                   </div>
                 </div>
-                
+
                 <div className="flex items-center space-x-4 p-4 bg-teal-50 rounded-lg">
                   <ChefHat className="w-8 h-8 text-teal-600" />
                   <div>
@@ -1708,7 +1662,7 @@ function AboutPage({ auth, onNavigate }: { auth?: AuthState; onNavigate?: (page:
                     <p className="text-sm text-gray-600">Personalized meal recommendations</p>
                   </div>
                 </div>
-                
+
                 <div className="flex items-center space-x-4 p-4 bg-green-50 rounded-lg">
                   <Recycle className="w-8 h-8 text-green-600" />
                   <div>
@@ -1728,7 +1682,7 @@ function AboutPage({ auth, onNavigate }: { auth?: AuthState; onNavigate?: (page:
               Meet Our Team
             </span>
           </h2>
-          
+
           <div className="grid md:grid-cols-3 gap-8">
             {developers.map((developer, index) => (
               <motion.div
@@ -1746,7 +1700,7 @@ function AboutPage({ auth, onNavigate }: { auth?: AuthState; onNavigate?: (page:
                           {developer.avatar}
                         </span>
                       </div>
-                      
+
                       <h3 className="font-bold text-gray-900 mb-2 group-hover:text-emerald-800 transition-colors duration-300">{developer.name}</h3>
                       <Badge className="bg-emerald-100 text-emerald-700 mb-3 group-hover:bg-emerald-200 transition-colors duration-300">
                         {developer.role}
@@ -1755,7 +1709,7 @@ function AboutPage({ auth, onNavigate }: { auth?: AuthState; onNavigate?: (page:
                         {developer.description}
                       </p>
                     </div>
-                    
+
                     {/* Social Links - Always visible with hover effects */}
                     <div className="pt-4 border-t border-gray-200 group-hover:border-emerald-200 transition-colors duration-300">
                       <div className="flex justify-center items-center space-x-3">
@@ -1800,10 +1754,10 @@ function AboutPage({ auth, onNavigate }: { auth?: AuthState; onNavigate?: (page:
           <CardContent className="p-8 text-center">
             <h3 className="text-2xl font-bold text-gray-900 mb-4">Get In Touch</h3>
             <p className="text-gray-600 mb-6 max-w-2xl mx-auto">
-              Have questions, suggestions, or feedback? We'd love to hear from you! 
+              Have questions, suggestions, or feedback? We'd love to hear from you!
               Our team is always working to improve your FridgeToFork experience.
             </p>
-            
+
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Button className="bg-emerald-600 hover:bg-emerald-700">
                 📧 Contact Support
@@ -1821,17 +1775,13 @@ function AboutPage({ auth, onNavigate }: { auth?: AuthState; onNavigate?: (page:
 
 function InventoryPage({ auth }: { auth: AuthState }) {
   const [inventoryItems, setInventoryItems] = useState([
-    { id: 1, name: 'Apple', daysLeft: 2, image: '🍎' },
-    { id: 2, name: 'Tomato', daysLeft: 3, image: '🍅' },
-    { id: 3, name: 'Cheese', daysLeft: 5, image: '🧀' },
-    { id: 4, name: 'Milk', daysLeft: 1, image: '🥛' }
   ]);
 
   // Integrated Email Notification System for Spoiling Ingredients
   useEffect(() => {
     const checkForSpoilingIngredients = async () => {
       const spoilingSoonItems = inventoryItems.filter(item => item.daysLeft <= 2);
-      
+
       if (spoilingSoonItems.length > 0 && auth.user?.email) {
         console.log('🔔 EMAIL NOTIFICATION TRIGGER:', {
           spoilingItems: spoilingSoonItems,
@@ -1839,7 +1789,7 @@ function InventoryPage({ auth }: { auth: AuthState }) {
           message: `You have ${spoilingSoonItems.length} ingredients expiring soon!`,
           items: spoilingSoonItems.map(item => `${item.name} (${item.daysLeft} days left)`).join(', ')
         });
-        
+
         // Send actual email notification
         try {
           const emailResult = await sendSpoilingReminder(
@@ -1849,7 +1799,7 @@ function InventoryPage({ auth }: { auth: AuthState }) {
               daysLeft: item.daysLeft
             }))
           );
-          
+
           if (emailResult.success) {
             console.log('✅ Spoiling reminder email sent successfully');
           } else {
@@ -1863,7 +1813,7 @@ function InventoryPage({ auth }: { auth: AuthState }) {
 
     // Check for spoiling ingredients on component mount
     checkForSpoilingIngredients();
-    
+
     // Set up periodic checks (every 12 hours)
     const notificationInterval = setInterval(checkForSpoilingIngredients, 12 * 60 * 60 * 1000);
     return () => clearInterval(notificationInterval);
@@ -1884,19 +1834,19 @@ function InventoryPage({ auth }: { auth: AuthState }) {
   const handleAddToBin = (itemId: number) => {
     // Find the item in inventory
     const itemToMove = inventoryItems.find(item => item.id === itemId);
-    
+
     if (itemToMove) {
       // Add to waste management bin with a new ID to avoid conflicts
       const newWasteItem = {
         ...itemToMove,
         id: Date.now() + Math.random() // Generate unique ID
       };
-      
+
       setWasteManagementItems(prev => [...prev, newWasteItem]);
-      
+
       // Remove from inventory
       setInventoryItems(prev => prev.filter(item => item.id !== itemId));
-      
+
       console.log('✅ Moved item to waste management bin:', itemToMove.name);
     }
   };
@@ -1904,10 +1854,10 @@ function InventoryPage({ auth }: { auth: AuthState }) {
   const handleGenerateLeftoverRecipes = async () => {
     try {
       console.log('🍳 Generating leftover recipes from waste management bin...');
-      
+
       // Extract ingredient names from waste management items
       const ingredientNames = wasteManagementItems.map(item => item.name);
-      
+
       if (ingredientNames.length === 0) {
         console.warn('⚠️ No ingredients in waste management bin');
         return;
@@ -1915,10 +1865,10 @@ function InventoryPage({ auth }: { auth: AuthState }) {
 
       // Generate recipes using the same logic as Homepage
       const generatedRecipes = generateRecipes(ingredientNames);
-      
+
       // Set the leftover recipes
       setLeftoverRecipes(generatedRecipes);
-      
+
       // Save to Firebase if user is authenticated
       if (auth.user?.uid) {
         const recipesForSave = generatedRecipes.map(recipe => ({
@@ -1926,9 +1876,9 @@ function InventoryPage({ auth }: { auth: AuthState }) {
           id: '',
           createdAt: new Date()
         }));
-        
+
         await saveGeneratedRecipes(auth.user.uid, recipesForSave);
-        
+
         // Send recipe suggestions email
         if (auth.user.email) {
           await sendRecipeSuggestions(
@@ -1938,7 +1888,7 @@ function InventoryPage({ auth }: { auth: AuthState }) {
           );
         }
       }
-      
+
       console.log('✅ Successfully generated leftover recipes:', generatedRecipes.length);
     } catch (error) {
       console.error('❌ Error generating leftover recipes:', error);
@@ -1965,7 +1915,7 @@ function InventoryPage({ auth }: { auth: AuthState }) {
     <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-teal-50 to-green-50 relative overflow-hidden">
       {/* Background animations matching other pages */}
       <div className="absolute inset-0 overflow-hidden">
-        <motion.div 
+        <motion.div
           className="absolute -top-40 -right-40 w-80 h-80 bg-emerald-200/20 rounded-full blur-3xl"
           animate={{
             x: [0, 50, 0],
@@ -1978,7 +1928,7 @@ function InventoryPage({ auth }: { auth: AuthState }) {
             ease: "easeInOut",
           }}
         />
-        <motion.div 
+        <motion.div
           className="absolute -bottom-40 -left-40 w-96 h-96 bg-teal-200/20 rounded-full blur-3xl"
           animate={{
             x: [0, -40, 0],
@@ -2015,7 +1965,7 @@ function InventoryPage({ auth }: { auth: AuthState }) {
                 Inventory
               </span>
             </h1>
-            
+
             {/* Email Notification Status */}
             <div className="flex items-center space-x-3">
               <div className="flex items-center space-x-2 bg-emerald-50 px-4 py-2 rounded-lg border border-emerald-200">
@@ -2059,7 +2009,7 @@ function InventoryPage({ auth }: { auth: AuthState }) {
                             </p>
                           </div>
                         </div>
-                        <Button 
+                        <Button
                           size="sm"
                           className="absolute bottom-2 right-2 sm:bottom-3 sm:right-3 bg-white/90 text-gray-800 hover:bg-white font-semibold px-1.5 py-1 sm:px-2 sm:py-1 h-6 sm:h-7 text-xs"
                           onClick={() => handleAddToBin(item.id)}
@@ -2097,7 +2047,7 @@ function InventoryPage({ auth }: { auth: AuthState }) {
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
                   >
-                    <Button 
+                    <Button
                       className="bg-gradient-to-r from-emerald-400 to-emerald-500 hover:from-emerald-500 hover:to-emerald-600 text-white font-bold rounded-full px-8 py-3 shadow-lg hover:shadow-xl transition-all duration-300"
                       onClick={handleGenerateLeftoverRecipes}
                       disabled={wasteManagementItems.length === 0}
@@ -2106,7 +2056,7 @@ function InventoryPage({ auth }: { auth: AuthState }) {
                     </Button>
                   </motion.div>
                 </div>
-                
+
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3 sm:gap-4">
                   {wasteManagementItems.map((item, index) => (
                     <motion.div
@@ -2143,7 +2093,7 @@ function InventoryPage({ auth }: { auth: AuthState }) {
                   transition={{ type: "spring", stiffness: 400, damping: 17 }}
                   className="w-full sm:w-auto"
                 >
-                  <Button 
+                  <Button
                     size="lg"
                     className="w-full sm:w-auto bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white font-bold px-8 sm:px-16 py-4 sm:py-5 rounded-full shadow-xl hover:shadow-2xl transition-all duration-300 border-2 border-white/20"
                     onClick={() => setShowRecoverModal(true)}
@@ -2152,14 +2102,14 @@ function InventoryPage({ auth }: { auth: AuthState }) {
                     RECOVER
                   </Button>
                 </motion.div>
-                
+
                 <motion.div
                   whileHover={{ scale: 1.08, y: -2 }}
                   whileTap={{ scale: 0.95 }}
                   transition={{ type: "spring", stiffness: 400, damping: 17 }}
                   className="w-full sm:w-auto"
                 >
-                  <Button 
+                  <Button
                     size="lg"
                     className="w-full sm:w-auto bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white font-bold px-8 sm:px-16 py-4 sm:py-5 rounded-full shadow-xl hover:shadow-2xl transition-all duration-300 border-2 border-white/20"
                     onClick={() => setShowRecycleModal(true)}
@@ -2182,7 +2132,7 @@ function InventoryPage({ auth }: { auth: AuthState }) {
                       Transform ingredients before they go bad with these smart recovery methods. Save money and reduce waste!
                     </DialogDescription>
                   </DialogHeader>
-                  
+
                   <div className="space-y-6 max-h-96 overflow-y-auto pr-2">
                     {recoverTechniques.map((technique, index) => (
                       <motion.div
@@ -2209,7 +2159,7 @@ function InventoryPage({ auth }: { auth: AuthState }) {
                       </motion.div>
                     ))}
                   </div>
-                  
+
                   <div className="pt-4 border-t border-emerald-200">
                     <p className="text-center text-sm text-emerald-600 font-medium">
                       💡 Pro tip: Combine multiple techniques for maximum waste reduction!
@@ -2230,7 +2180,7 @@ function InventoryPage({ auth }: { auth: AuthState }) {
                       Give food waste a second life with these eco-friendly recycling methods. Help the planet while being resourceful!
                     </DialogDescription>
                   </DialogHeader>
-                  
+
                   <div className="space-y-6 max-h-96 overflow-y-auto pr-2">
                     {recycleTechniques.map((technique, index) => (
                       <motion.div
@@ -2257,7 +2207,7 @@ function InventoryPage({ auth }: { auth: AuthState }) {
                       </motion.div>
                     ))}
                   </div>
-                  
+
                   <div className="pt-4 border-t border-green-200">
                     <p className="text-center text-sm text-green-600 font-medium">
                       🌱 Every small action makes a big difference for our environment!
@@ -2288,8 +2238,8 @@ function InventoryPage({ auth }: { auth: AuthState }) {
                     transition={{ duration: 0.4, ease: "easeOut" }}
                   >
                     <div className="mb-6">
-                      <Button 
-                        variant="ghost" 
+                      <Button
+                        variant="ghost"
                         onClick={() => setSelectedLeftoverRecipe(null)}
                         className="hover:bg-emerald-50 text-emerald-700"
                       >
@@ -2300,7 +2250,7 @@ function InventoryPage({ auth }: { auth: AuthState }) {
 
                     <div className="grid md:grid-cols-2 gap-8">
                       <div>
-                        <motion.img 
+                        <motion.img
                           src={selectedLeftoverRecipe.image}
                           alt={selectedLeftoverRecipe.name}
                           className="w-full h-64 object-cover rounded-lg mb-6 shadow-lg"
@@ -2325,7 +2275,7 @@ function InventoryPage({ auth }: { auth: AuthState }) {
                           </div>
                         </div>
                       </div>
-                      
+
                       <div className="space-y-6">
                         <div>
                           <h4 className="font-semibold text-gray-900 mb-3 flex items-center">
@@ -2334,7 +2284,7 @@ function InventoryPage({ auth }: { auth: AuthState }) {
                           </h4>
                           <div className="flex flex-wrap gap-2 mb-4">
                             {wasteManagementItems.map((item, index) => (
-                              <Badge 
+                              <Badge
                                 key={index}
                                 className="bg-emerald-100 text-emerald-700 px-3 py-1"
                               >
@@ -2343,7 +2293,7 @@ function InventoryPage({ auth }: { auth: AuthState }) {
                             ))}
                           </div>
                         </div>
-                        
+
                         <div>
                           <h4 className="font-semibold text-gray-900 mb-3 flex items-center">
                             <Clock className="w-4 h-4 mr-2 text-emerald-600" />
@@ -2377,7 +2327,7 @@ function InventoryPage({ auth }: { auth: AuthState }) {
                             Sustainability Impact
                           </h5>
                           <p className="text-green-700 text-sm">
-                            By using leftover ingredients, you're helping reduce food waste and supporting SDG 12: 
+                            By using leftover ingredients, you're helping reduce food waste and supporting SDG 12:
                             Responsible Consumption and Production. Every leftover meal makes a difference!
                           </p>
                         </div>
@@ -2394,7 +2344,7 @@ function InventoryPage({ auth }: { auth: AuthState }) {
                         </p>
                         <div className="flex flex-wrap gap-2">
                           {wasteManagementItems.map((item, index) => (
-                            <Badge 
+                            <Badge
                               key={index}
                               className="bg-emerald-100 text-emerald-700 px-3 py-1"
                             >
@@ -2416,12 +2366,12 @@ function InventoryPage({ auth }: { auth: AuthState }) {
                           animate={{ opacity: 1, y: 0 }}
                           transition={{ delay: index * 0.1, duration: 0.3 }}
                         >
-                          <Card 
+                          <Card
                             className="overflow-hidden cursor-pointer transition-all duration-300 border-0 shadow-lg bg-white/90 backdrop-blur-lg hover:shadow-xl hover:scale-105 group"
                             onClick={() => setSelectedLeftoverRecipe(recipe)}
                           >
                             <div className="relative">
-                              <img 
+                              <img
                                 src={recipe.image}
                                 alt={recipe.name}
                                 className="w-full h-40 object-cover transition-transform duration-300 group-hover:scale-110"
@@ -2459,7 +2409,7 @@ function InventoryPage({ auth }: { auth: AuthState }) {
                           Supporting SDG 12: Responsible Consumption
                         </h4>
                         <p className="text-emerald-700">
-                          You've transformed {wasteManagementItems.length} leftover ingredients into {leftoverRecipes.length} delicious recipes, 
+                          You've transformed {wasteManagementItems.length} leftover ingredients into {leftoverRecipes.length} delicious recipes,
                           preventing food waste and promoting sustainable cooking practices!
                         </p>
                       </div>
@@ -2477,7 +2427,8 @@ function InventoryPage({ auth }: { auth: AuthState }) {
 
 function Homepage({ onNavigate, auth }: { onNavigate?: (page: string) => void; auth: AuthState }) {
   const [detectedIngredients, setDetectedIngredients] = useState<string[]>([]);
-  const [selectedRecipeId, setSelectedRecipeId] = useState(0);
+  const [generatedRecipes, setGeneratedRecipes] = useState<any[]>([]); // Use Recipe[] if type is defined
+  const [selectedRecipeId, setSelectedRecipeId] = useState<string | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const [currentRecipeIndex, setCurrentRecipeIndex] = useState(0);
   const [showUploadOptions, setShowUploadOptions] = useState(false);
@@ -2489,20 +2440,50 @@ function Homepage({ onNavigate, auth }: { onNavigate?: (page: string) => void; a
       if (auth.user?.uid) {
         try {
           setIsLoading(true);
-          
+
           // Load user ingredients
           const ingredientsResult = await getUserIngredients(auth.user.uid);
+          let ingredientNames: string[] = [];
           if (!ingredientsResult.error && ingredientsResult.ingredients.length > 0) {
-            const ingredientNames = ingredientsResult.ingredients.map(ing => ing.name);
+            ingredientNames = ingredientsResult.ingredients.map(ing => ing.name);
             setDetectedIngredients(ingredientNames);
           } else {
             // Use demo data if no ingredients found
-            setDetectedIngredients(['Apple', 'Tomato', 'Cheese', 'Milk']);
+            ingredientNames = [];
+            setDetectedIngredients(ingredientNames);
           }
+
+          // Load user recipes
+          const recipesResult = await getUserRecipes(auth.user.uid);
+          let recipes: any[] = [];
+          if (!recipesResult.error && recipesResult.recipes.length > 0) {
+            recipes = recipesResult.recipes;
+          } else if (ingredientNames.length > 0) {
+            // Generate recipes if none exist but ingredients are available
+            const genRecipes = generateRecipes(ingredientNames);
+            const recipesForSave = genRecipes.map(recipe => ({
+              ...recipe,
+              id: '',
+              createdAt: new Date(),
+              usedIngredients: ingredientNames // Optional, if your Recipe type supports it
+            }));
+            await saveGeneratedRecipes(auth.user.uid, recipesForSave);
+            const updatedRecipesResult = await getUserRecipes(auth.user.uid);
+            if (!updatedRecipesResult.error) {
+              recipes = updatedRecipesResult.recipes;
+            }
+          }
+          setGeneratedRecipes(recipes);
+          if (recipes.length > 0) {
+            setSelectedRecipeId(recipes[0].id);
+          }
+
         } catch (error) {
           console.error('Failed to load user data:', error);
           // Fallback to demo data
           setDetectedIngredients(['Apple', 'Tomato', 'Cheese', 'Milk']);
+          setGeneratedRecipes([]); // Or use hardcoded allRecipes if needed for fallback
+          setSelectedRecipeId(null);
         } finally {
           setIsLoading(false);
         }
@@ -2521,80 +2502,62 @@ function Homepage({ onNavigate, auth }: { onNavigate?: (page: string) => void; a
         return;
       }
 
+      setIsLoading(true);
       console.log('🔍 Processing image for ingredient detection...');
-      
-      // Analyze image with Google Vision API
+
       const visionResult = await analyzeImageWithGoogleVision(file, auth.user.uid);
-      
+
       if (visionResult.error) {
         console.error('Vision API Error:', visionResult.error);
+        setIsLoading(false);
+        return;
       }
-      
-      // Update detected ingredients state
-      const ingredientNames = visionResult.ingredients.map(ing => ing.name);
+
+      const ingredientNames = visionResult.ingredients.map((ing: DetectedIngredient) => ing.name);
       setDetectedIngredients(ingredientNames);
-      
-      // Save to Firebase
-      const firebaseIngredients = visionResult.ingredients.map(ing => ({
-        id: '', // Will be set by Firebase
+
+      const firebaseIngredients: Ingredient[] = visionResult.ingredients.map((ing: DetectedIngredient) => ({
+        id: '',
         name: ing.name,
         detectedAt: new Date(),
         addedManually: false,
         confidence: ing.confidence,
-        category: ing.category
+        category: ing.category || 'detected'
       }));
-      
+
       await saveDetectedIngredients(auth.user.uid, firebaseIngredients);
       await updateInventory(auth.user.uid, ingredientNames);
-      
-      // Generate and save recipes
-      const generatedRecipes = generateRecipes(ingredientNames);
-      const recipesForSave = generatedRecipes.map(recipe => ({
+
+      const generatedRecipesLocal = generateRecipes(ingredientNames);
+      const recipesForSave = generatedRecipesLocal.map(recipe => ({
         ...recipe,
-        id: '', // Will be set by Firebase
-        createdAt: new Date()
+        id: '',
+        createdAt: new Date(),
+        image: 'https://via.placeholder.com/150' // Placeholder since no Storage
       }));
-      
+
       await saveGeneratedRecipes(auth.user.uid, recipesForSave);
-      
+
+      const updatedRecipesResult = await getUserRecipes(auth.user.uid);
+      if (!updatedRecipesResult.error) {
+        setGeneratedRecipes(updatedRecipesResult.recipes);
+        if (updatedRecipesResult.recipes.length > 0) {
+          setSelectedRecipeId(updatedRecipesResult.recipes[0].id);
+        }
+      }
+
       console.log('✅ Successfully detected and saved ingredients:', ingredientNames);
       setShowUploadOptions(false);
+      setIsLoading(false);
     } catch (error) {
       console.error('❌ Error analyzing image:', error);
-    }
-  };
-
-  const handleCameraCapture = async () => {
-    try {
-      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-        const stream = await navigator.mediaDevices.getUserMedia({ 
-          video: { facingMode: 'environment' } // Use back camera for mobile
-        });
-        
-        // TODO: Implement camera capture interface
-        // For now, just show a placeholder message
-        console.log('Camera access granted, implement camera UI');
-        alert('Camera functionality will be implemented with camera capture interface');
-        
-        // Stop the stream
-        stream.getTracks().forEach(track => track.stop());
-        setShowUploadOptions(false);
-      } else {
-        alert('Camera not supported on this device');
-      }
-    } catch (error) {
-      console.error('Camera access denied:', error);
-      alert('Camera access denied. Please use file upload instead.');
+      setIsLoading(false);
     }
   };
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      if (!auth.user?.uid) {
-        console.error('User not authenticated');
-        return;
-      }
       handleImageUpload(file);
     }
   };
@@ -2607,169 +2570,9 @@ function Homepage({ onNavigate, auth }: { onNavigate?: (page: string) => void; a
       handleImageUpload(file);
     }
   };
-  
-  // Extended recipe data to demonstrate scalability for 25+ recipes
-  const allRecipes = [
-    {
-      id: 0,
-      name: "Egg Bowl",
-      image: imgImage6,
-      time: '15 min',
-      difficulty: 'Easy',
-      calories: 420,
-      nutritionBenefits: "High protein, rich in vitamins A & D",
-      ingredients: [
-        "2 eggs (or 3 if you want it heartier)",
-        "½ cup cooked rice (white, brown, or fried rice) OR cooked quinoa",
-        "½ cup sautéed veggies (onions, bell peppers, spinach, mushrooms, etc.)",
-        "2–3 slices of bacon OR sausage OR grilled chicken (optional protein)",
-        "¼ cup shredded cheese (cheddar, mozzarella, or your choice)",
-        "1 tbsp soy sauce (if using rice) or hot sauce (if you like spicy)",
-        "Salt & pepper to taste",
-        "Green onions or parsley for garnish"
-      ],
-      instructions: [
-        { title: "Cook the base", detail: "If you're using rice or quinoa, reheat or cook it first. Place it in a bowl as the base." },
-        { title: "Prepare the protein (optional)", detail: "Fry bacon/sausage OR cook chicken. Slice into bite-sized pieces." },
-        { title: "Cook the eggs", detail: "Scramble: Beat eggs with a pinch of salt & pepper, then cook in a pan until soft and fluffy. Or sunny-side-up / poached: cook however you like best." },
-        { title: "Sauté veggies", detail: "In a little oil, cook onions, peppers, and other veggies until tender." },
-        { title: "Assemble the bowl", detail: "Base: rice or quinoa. Layer: sautéed veggies, cooked protein, and eggs on top. Sprinkle with cheese and let it melt." },
-        { title: "Finish & serve", detail: "Drizzle soy sauce, sriracha, or hot sauce. Garnish with chopped green onions or parsley." }
-      ]
-    },
-    {
-      id: 1,
-      name: "Fresh Salad",
-      image: imgImage7,
-      time: '10 min',
-      difficulty: 'Easy',
-      calories: 180,
-      nutritionBenefits: "Low calorie, high fiber, antioxidants",
-      ingredients: [
-        "2 cups mixed lettuce",
-        "1 tomato (diced)",
-        "¼ cucumber (sliced)",
-        "2 tbsp olive oil",
-        "1 tbsp lemon juice",
-        "¼ red onion (thinly sliced)",
-        "Salt and pepper to taste"
-      ],
-      instructions: [
-        { title: "Prepare vegetables", detail: "Wash and dry lettuce leaves thoroughly. Dice tomato and slice cucumber." },
-        { title: "Make dressing", detail: "Whisk olive oil and lemon juice together." },
-        { title: "Assemble salad", detail: "Combine lettuce, tomato, cucumber, and red onion in a large bowl." },
-        { title: "Finish & serve", detail: "Drizzle dressing over salad and toss gently. Season with salt and pepper to taste." }
-      ]
-    },
-    {
-      id: 2,
-      name: "Cheese Omelette",
-      image: imgImage8,
-      time: '12 min',
-      difficulty: 'Medium',
-      calories: 320,
-      nutritionBenefits: "Protein-rich, calcium from cheese",
-      ingredients: [
-        "3 large eggs",
-        "2 tbsp butter",
-        "⅓ cup shredded cheese",
-        "2 tbsp milk",
-        "Salt and pepper to taste",
-        "1 tbsp fresh chives (chopped)"
-      ],
-      instructions: [
-        { title: "Prepare eggs", detail: "Beat eggs with milk, salt, and pepper in a bowl." },
-        { title: "Heat pan", detail: "Heat butter in a non-stick omelette pan over medium heat." },
-        { title: "Cook omelette", detail: "Pour egg mixture into the pan. As eggs start to set, gently pull edges toward center." },
-        { title: "Add cheese", detail: "When almost set, add cheese to one half of omelette." },
-        { title: "Fold and serve", detail: "Fold omelette in half and slide onto plate. Garnish with fresh chives." }
-      ]
-    },
-    {
-      id: 3,
-      name: "Veggie Stir Fry",
-      image: imgImage6,
-      time: '20 min',
-      difficulty: 'Easy',
-      calories: 250,
-      nutritionBenefits: "Rich in vitamins, low fat",
-      ingredients: ["Mixed vegetables", "Soy sauce", "Garlic", "Ginger", "Oil"],
-      instructions: [
-        { title: "Heat pan", detail: "Heat oil in a large pan or wok over high heat." },
-        { title: "Add aromatics", detail: "Add garlic and ginger, stir-fry for 30 seconds." },
-        { title: "Add vegetables", detail: "Add vegetables and stir-fry for 5-7 minutes." },
-        { title: "Season", detail: "Add soy sauce and toss to combine." }
-      ]
-    },
-    {
-      id: 4,
-      name: "Tomato Pasta",
-      image: imgImage7,
-      time: '25 min',
-      difficulty: 'Medium',
-      calories: 380,
-      nutritionBenefits: "Carbohydrates, lycopene from tomatoes",
-      ingredients: ["Pasta", "Tomatoes", "Garlic", "Basil", "Olive oil"],
-      instructions: [
-        { title: "Boil pasta", detail: "Cook pasta according to package directions." },
-        { title: "Make sauce", detail: "Sauté garlic, add tomatoes and simmer." },
-        { title: "Combine", detail: "Toss pasta with sauce and fresh basil." }
-      ]
-    },
-    {
-      id: 5,
-      name: "Apple Smoothie",
-      image: imgImage6,
-      time: '5 min',
-      difficulty: 'Easy',
-      calories: 150,
-      nutritionBenefits: "Vitamin C, fiber",
-      ingredients: ["Apple", "Yogurt", "Honey", "Ice"],
-      instructions: [
-        { title: "Prepare", detail: "Core and chop apple into chunks." },
-        { title: "Blend", detail: "Combine all ingredients in blender until smooth." }
-      ]
-    },
-    {
-      id: 6,
-      name: "Cheese Toast",
-      image: imgImage8,
-      time: '8 min',
-      difficulty: 'Easy',
-      calories: 280,
-      nutritionBenefits: "Protein, calcium",
-      ingredients: ["Bread", "Cheese", "Butter"],
-      instructions: [
-        { title: "Prepare", detail: "Butter bread and add cheese on top." },
-        { title: "Toast", detail: "Toast until cheese melts and bread is golden." }
-      ]
-    },
-    {
-      id: 7,
-      name: "Milk Pancakes",
-      image: imgImage7,
-      time: '18 min',
-      difficulty: 'Medium',
-      calories: 340,
-      nutritionBenefits: "Protein, calcium",
-      ingredients: ["Flour", "Milk", "Eggs", "Sugar", "Baking powder"],
-      instructions: [
-        { title: "Mix batter", detail: "Combine all ingredients until smooth." },
-        { title: "Cook", detail: "Pour batter onto hot griddle and flip when bubbles form." }
-      ]
-    }
-  ];
-
-  const selectedRecipe = allRecipes[selectedRecipeId];
-  const recipesPerPage = 4;
-  const totalPages = Math.ceil(allRecipes.length / recipesPerPage);
-  const currentPageRecipes = allRecipes.slice(
-    currentRecipeIndex, 
-    currentRecipeIndex + recipesPerPage
-  );
 
   const handleNextRecipes = () => {
-    if (currentRecipeIndex + recipesPerPage < allRecipes.length) {
+    if (currentRecipeIndex + recipesPerPage < generatedRecipes.length) {
       setCurrentRecipeIndex(currentRecipeIndex + recipesPerPage);
     }
   };
@@ -2780,11 +2583,23 @@ function Homepage({ onNavigate, auth }: { onNavigate?: (page: string) => void; a
     }
   };
 
+  if (isLoading) {
+    return <div className="text-center py-12">Loading your data...</div>;
+  }
+
+  const selectedRecipe = generatedRecipes.find(r => r.id === selectedRecipeId) || (generatedRecipes[0] || null);
+  const recipesPerPage = 4;
+  const totalPages = Math.ceil(generatedRecipes.length / recipesPerPage);
+  const currentPageRecipes = generatedRecipes.slice(
+    currentRecipeIndex,
+    currentRecipeIndex + recipesPerPage
+  );
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-teal-50 to-green-50 dark:bg-gradient-to-br dark:from-gray-900 dark:via-emerald-950/20 dark:to-teal-950/20 relative overflow-hidden">
-      {/* Background animations matching landing page */}
+      {/* Background animations */}
       <div className="absolute inset-0 overflow-hidden">
-        <motion.div 
+        <motion.div
           className="absolute -top-40 -right-40 w-80 h-80 bg-emerald-200/20 dark:floating-orb-1 rounded-full blur-3xl"
           animate={{
             x: [0, 50, 0],
@@ -2797,7 +2612,7 @@ function Homepage({ onNavigate, auth }: { onNavigate?: (page: string) => void; a
             ease: "easeInOut",
           }}
         />
-        <motion.div 
+        <motion.div
           className="absolute -bottom-40 -left-40 w-96 h-96 bg-teal-200/20 dark:floating-orb-2 rounded-full blur-3xl"
           animate={{
             x: [0, -40, 0],
@@ -2828,10 +2643,10 @@ function Homepage({ onNavigate, auth }: { onNavigate?: (page: string) => void; a
       <div className="max-w-6xl mx-auto px-6 py-8 relative z-10">
         {/* Upload Section */}
         <div className="mb-12">
-          <Card 
+          <Card
             className={`max-w-lg mx-auto border-2 border-dashed transition-all duration-300 hover:shadow-xl ${
-              isDragOver 
-                ? 'border-emerald-400 dark:border-emerald-500 bg-emerald-50/50 dark:bg-emerald-500/10 shadow-lg' 
+              isDragOver
+                ? 'border-emerald-400 dark:border-emerald-500 bg-emerald-50/50 dark:bg-emerald-500/10 shadow-lg'
                 : 'border-gray-300 dark:border-gray-600 hover:border-emerald-300 dark:hover:border-emerald-400 bg-white/80 dark:glass backdrop-blur-lg'
             }`}
             onDragOver={(e) => {
@@ -2860,15 +2675,6 @@ function Homepage({ onNavigate, auth }: { onNavigate?: (page: string) => void; a
                 Drag and drop or click to browse
               </p>
               <div className="space-y-4">
-                {!showUploadOptions ? (
-                  <Button 
-                    className="bg-emerald-600 hover:bg-emerald-700 transform hover:scale-105 transition-all"
-                    onClick={() => setShowUploadOptions(true)}
-                  >
-                    <Camera className="w-4 h-4 mr-2" />
-                    Upload Your Fridge Photo
-                  </Button>
-                ) : (
                   <div className="space-y-3">
                     <div className="flex flex-col sm:flex-row gap-3 justify-center">
                       <div className="relative">
@@ -2879,7 +2685,7 @@ function Homepage({ onNavigate, auth }: { onNavigate?: (page: string) => void; a
                           className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                           id="homepage-file-upload"
                         />
-                        <Button 
+                        <Button
                           variant="outline"
                           className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 w-full sm:w-auto"
                           onClick={() => document.getElementById('homepage-file-upload')?.click()}
@@ -2888,27 +2694,8 @@ function Homepage({ onNavigate, auth }: { onNavigate?: (page: string) => void; a
                           Upload Image
                         </Button>
                       </div>
-                      
-                      <Button 
-                        variant="outline"
-                        className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 w-full sm:w-auto"
-                        onClick={handleCameraCapture}
-                      >
-                        <Camera className="w-4 h-4 mr-2" />
-                        Use Camera
-                      </Button>
                     </div>
-                    
-                    <Button 
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setShowUploadOptions(false)}
-                      className="text-gray-500 hover:text-gray-700"
-                    >
-                      Cancel
-                    </Button>
                   </div>
-                )}
               </div>
             </CardContent>
           </Card>
@@ -2923,54 +2710,67 @@ function Homepage({ onNavigate, auth }: { onNavigate?: (page: string) => void; a
                 {detectedIngredients.length} items detected
               </Badge>
             </div>
-            <div className="flex flex-wrap gap-3 mb-6">
-              {detectedIngredients.map((ingredient, index) => (
-                <motion.div
-                  key={ingredient}
-                  initial={{ opacity: 0, scale: 0.8 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ delay: index * 0.1 }}
-                >
-                  <Badge 
-                    className="bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 px-4 py-2 text-sm hover:bg-emerald-200 dark:hover:bg-emerald-500/30 transition-colors cursor-pointer transform hover:scale-105 border border-emerald-200 dark:border-emerald-500/30"
+            {detectedIngredients.length === 0 ? (
+              <p className="text-gray-500 text-center py-4">No ingredients detected yet. Upload a photo to get started!</p>
+            ) : (
+              <div className="flex flex-wrap gap-3 mb-6">
+                {detectedIngredients.map((ingredient, index) => (
+                  <motion.div
+                    key={ingredient}
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ delay: index * 0.1 }}
                   >
-                    {ingredient}
-                  </Badge>
-                </motion.div>
-              ))}
-              <Badge 
-                variant="outline" 
-                className="border-emerald-200 dark:border-emerald-500/30 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 cursor-pointer"
-                onClick={async () => {
-                  const ingredientName = prompt('Enter ingredient name:');
-                  if (ingredientName && auth.user?.uid) {
-                    try {
-                      await addManualIngredient(auth.user.uid, ingredientName);
-                      const newIngredients = [...detectedIngredients, ingredientName];
-                      setDetectedIngredients(newIngredients);
-                      
-                      // Update inventory and generate new recipes
-                      await updateInventory(auth.user.uid, [ingredientName]);
-                      const generatedRecipes = generateRecipes(newIngredients);
-                      const recipesForSave = generatedRecipes.map(recipe => ({
-                        ...recipe,
-                        id: '',
-                        createdAt: new Date()
-                      }));
-                      await saveGeneratedRecipes(auth.user.uid, recipesForSave);
-                      
-                      console.log('✅ Manual ingredient added:', ingredientName);
-                    } catch (error) {
-                      console.error('❌ Failed to add ingredient:', error);
+                    <Badge
+                      className="bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 px-4 py-2 text-sm hover:bg-emerald-200 dark:hover:bg-emerald-500/30 transition-colors cursor-pointer transform hover:scale-105 border border-emerald-200 dark:border-emerald-500/30"
+                    >
+                      {ingredient}
+                    </Badge>
+                  </motion.div>
+                ))}
+                <Badge
+                  variant="outline"
+                  className="border-emerald-200 dark:border-emerald-500/30 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 cursor-pointer"
+                  onClick={async () => {
+                    const ingredientName = prompt('Enter ingredient name:');
+                    if (ingredientName && auth.user?.uid) {
+                      try {
+                        await addManualIngredient(auth.user.uid, ingredientName);
+                        const newIngredients = [...detectedIngredients, ingredientName];
+                        setDetectedIngredients(newIngredients);
+
+                        // Update inventory and generate new recipes
+                        await updateInventory(auth.user.uid, [ingredientName]);
+                        const generatedRecipesLocal = generateRecipes(newIngredients);
+                        const recipesForSave = generatedRecipesLocal.map(recipe => ({
+                          ...recipe,
+                          id: '',
+                          createdAt: new Date()
+                        }));
+                        await saveGeneratedRecipes(auth.user.uid, recipesForSave);
+
+                        // Reload recipes
+                        const updatedRecipesResult = await getUserRecipes(auth.user.uid);
+                        if (!updatedRecipesResult.error) {
+                          setGeneratedRecipes(updatedRecipesResult.recipes);
+                          if (updatedRecipesResult.recipes.length > 0) {
+                            setSelectedRecipeId(updatedRecipesResult.recipes[0].id);
+                          }
+                        }
+
+                        console.log('✅ Manual ingredient added:', ingredientName);
+                      } catch (error) {
+                        console.error('❌ Failed to add ingredient:', error);
+                      }
                     }
-                  }
-                }}
-              >
-                + Add More
-              </Badge>
-            </div>
-            <Button 
-              variant="outline" 
+                  }}
+                >
+                  + Add More
+                </Badge>
+              </div>
+            )}
+            <Button
+              variant="outline"
               className="border-emerald-200 dark:border-emerald-500/30 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-500/10"
               onClick={() => onNavigate?.('inventory')}
             >
@@ -2988,236 +2788,241 @@ function Homepage({ onNavigate, auth }: { onNavigate?: (page: string) => void; a
               </span>
             </h2>
             <p className="text-gray-600 dark:text-gray-300 text-center mb-6">
-              {allRecipes.length} personalized recipes based on your ingredients
+              {generatedRecipes.length} personalized recipes based on your ingredients
             </p>
           </div>
-          
-          {/* Recipe Layout: Recipe Options on Left, Main Recipe on Right */}
-          <div className="grid lg:grid-cols-4 gap-4 lg:gap-8">
-            {/* Left side - Recipe Selection with Navigation */}
-            <div className="lg:col-span-1 order-2 lg:order-1">
-              <div className="mb-6">
-                <div className="flex flex-col items-center space-y-4 mb-6">
-                  <h3 className="text-xl font-bold text-gray-900 dark:text-gray-100 text-center">
-                    Generated Recipes
-                  </h3>
-                  
-                  {/* Navigation Controls */}
-                  <div className="flex items-center space-x-4">
-                    <span className="text-sm text-gray-500">
-                      {Math.floor(currentRecipeIndex / recipesPerPage) + 1} of {totalPages}
-                    </span>
-                    <div className="flex space-x-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={handlePrevRecipes}
-                        disabled={currentRecipeIndex === 0}
-                        className="w-8 h-8 p-0 border-emerald-200 text-emerald-600 hover:bg-emerald-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        <ArrowLeft className="w-3 h-3" />
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={handleNextRecipes}
-                        disabled={currentRecipeIndex + recipesPerPage >= allRecipes.length}
-                        className="w-8 h-8 p-0 border-emerald-200 text-emerald-600 hover:bg-emerald-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        <ArrowLeft className="w-3 h-3 rotate-180" />
-                      </Button>
+
+          {generatedRecipes.length === 0 ? (
+            <p className="text-gray-500 text-center py-8">No recipes generated yet. Add ingredients to see suggestions!</p>
+          ) : (
+            <div className="grid lg:grid-cols-4 gap-4 lg:gap-8">
+              {/* Left side - Recipe Selection with Navigation */}
+              <div className="lg:col-span-1 order-2 lg:order-1">
+                <div className="mb-6">
+                  <div className="flex flex-col items-center space-y-4 mb-6">
+                    <h3 className="text-xl font-bold text-gray-900 dark:text-gray-100 text-center">
+                      Generated Recipes
+                    </h3>
+
+                    {/* Navigation Controls */}
+                    <div className="flex items-center space-x-4">
+                      <span className="text-sm text-gray-500">
+                        {Math.floor(currentRecipeIndex / recipesPerPage) + 1} of {totalPages}
+                      </span>
+                      <div className="flex space-x-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={handlePrevRecipes}
+                          disabled={currentRecipeIndex === 0}
+                          className="w-8 h-8 p-0 border-emerald-200 text-emerald-600 hover:bg-emerald-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          <ArrowLeft className="w-3 h-3" />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={handleNextRecipes}
+                          disabled={currentRecipeIndex + recipesPerPage >= generatedRecipes.length}
+                          className="w-8 h-8 p-0 border-emerald-200 text-emerald-600 hover:bg-emerald-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          <ArrowLeft className="w-3 h-3 rotate-180" />
+                        </Button>
+                      </div>
                     </div>
                   </div>
-                </div>
-                
-                {/* Recipe Cards - Vertical Stack */}
-                <div className="space-y-4">
-                  {currentPageRecipes.map((recipe, index) => (
-                    <motion.div
-                      key={recipe.id}
-                      initial={{ opacity: 0, x: -20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: index * 0.1, duration: 0.3 }}
-                    >
-                      <Card 
-                        className={`overflow-hidden cursor-pointer transition-all duration-300 border-0 shadow-lg bg-white/90 backdrop-blur-lg hover:shadow-xl hover:scale-102 ${
-                          selectedRecipeId === recipe.id 
-                            ? 'ring-2 ring-emerald-500/50 bg-emerald-50/80 shadow-xl scale-102' 
-                            : ''
-                        }`}
-                        onClick={() => setSelectedRecipeId(recipe.id)}
-                      >
-                        <div className="relative">
-                          <img 
-                            src={recipe.image}
-                            alt={recipe.name}
-                            className="w-full h-24 object-cover transition-transform duration-300"
-                          />
-                          <div className="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent"></div>
-                          <div className="absolute bottom-1 left-1 right-1">
-                            <Badge className="bg-white/90 text-gray-800 text-xs">
-                              {recipe.difficulty}
-                            </Badge>
-                          </div>
-                          {selectedRecipeId === recipe.id && (
-                            <motion.div 
-                              className="absolute inset-0 bg-emerald-500/10 flex items-center justify-center"
-                              initial={{ opacity: 0 }}
-                              animate={{ opacity: 1 }}
-                              transition={{ duration: 0.2 }}
-                            >
-                              <div className="w-6 h-6 bg-emerald-500 rounded-full flex items-center justify-center shadow-lg">
-                                <ChefHat className="w-3 h-3 text-white" />
-                              </div>
-                            </motion.div>
-                          )}
-                        </div>
-                        <CardContent className="p-3">
-                          <h3 className={`font-semibold text-sm mb-1 transition-colors ${
-                            selectedRecipeId === recipe.id ? 'text-emerald-800' : 'text-gray-900'
-                          }`}>
-                            {recipe.name}
-                          </h3>
-                          <div className="flex items-center justify-between text-xs text-gray-500">
-                            <span>🕒 {recipe.time}</span>
-                            <span>{recipe.calories} cal</span>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    </motion.div>
-                  ))}
-                </div>
-                
-                {/* Progress Indicators */}
-                <div className="flex justify-center mt-6 space-x-2">
-                  {Array.from({ length: totalPages }).map((_, index) => (
-                    <div
-                      key={index}
-                      className={`w-2 h-2 rounded-full transition-colors duration-300 ${
-                        Math.floor(currentRecipeIndex / recipesPerPage) === index
-                          ? 'bg-emerald-500'
-                          : 'bg-gray-300'
-                      }`}
-                    />
-                  ))}
-                </div>
-              </div>
-            </div>
 
-            {/* Right side - Main Recipe Display */}
-            <div className="lg:col-span-3 order-1 lg:order-2">
-              <motion.div
-                key={selectedRecipe.id}
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.4, ease: "easeOut" }}
-              >
-                <Card className="bg-white/90 dark:glass-strong backdrop-blur-lg shadow-xl border-0 dark:border dark:border-white/10 overflow-hidden">
-                  <CardContent className="p-4 sm:p-6 lg:p-8">
-                    <div className="grid md:grid-cols-2 gap-4 sm:gap-6 lg:gap-8">
-                      <div>
-                        <motion.img 
-                          src={selectedRecipe.image}
-                          alt={selectedRecipe.name}
-                          className="w-full h-64 object-cover rounded-lg mb-6 shadow-lg"
-                          initial={{ scale: 0.95, opacity: 0 }}
-                          animate={{ scale: 1, opacity: 1 }}
-                          transition={{ duration: 0.3, delay: 0.1 }}
-                        />
-                        <motion.div 
-                          className="text-center"
-                          initial={{ y: 10, opacity: 0 }}
-                          animate={{ y: 0, opacity: 1 }}
-                          transition={{ duration: 0.3, delay: 0.2 }}
+                  {/* Recipe Cards - Vertical Stack */}
+                  <div className="space-y-4">
+                    {currentPageRecipes.map((recipe, index) => (
+                      <motion.div
+                        key={recipe.id}
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: index * 0.1, duration: 0.3 }}
+                      >
+                        <Card
+                          className={`overflow-hidden cursor-pointer transition-all duration-300 border-0 shadow-lg bg-white/90 backdrop-blur-lg hover:shadow-xl hover:scale-102 ${
+                            selectedRecipeId === recipe.id
+                              ? 'ring-2 ring-emerald-500/50 bg-emerald-50/80 shadow-xl scale-102'
+                              : ''
+                          }`}
+                          onClick={() => setSelectedRecipeId(recipe.id)}
                         >
-                          <h3 className="text-3xl font-bold text-gray-900 mb-2">
-                            {selectedRecipe.name}
-                          </h3>
-                          <div className="flex flex-col items-center space-y-2">
-                            <div className="flex items-center justify-center space-x-4 text-sm text-gray-500">
-                              <span>🕒 {selectedRecipe.time}</span>
-                              <Badge className="bg-emerald-100 text-emerald-700">
-                                {selectedRecipe.difficulty}
+                          <div className="relative">
+                            <img
+                              src={recipe.image}
+                              alt={recipe.name}
+                              className="w-full h-24 object-cover transition-transform duration-300"
+                            />
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent"></div>
+                            <div className="absolute bottom-1 left-1 right-1">
+                              <Badge className="bg-white/90 text-gray-800 text-xs">
+                                {recipe.difficulty}
                               </Badge>
                             </div>
-                            <div className="text-center space-y-1">
-                              <div className="flex items-center justify-center space-x-4 text-sm">
-                                <span className="font-medium text-emerald-600">
-                                  {selectedRecipe.calories} cal
-                                </span>
-                              </div>
-                              <p className="text-xs text-gray-500 italic">
-                                {selectedRecipe.nutritionBenefits}
-                              </p>
-                            </div>
-                          </div>
-                        </motion.div>
-                      </div>
-                      
-                      <div className="space-y-6">
-                        <motion.div
-                          initial={{ y: 20, opacity: 0 }}
-                          animate={{ y: 0, opacity: 1 }}
-                          transition={{ duration: 0.3, delay: 0.3 }}
-                        >
-                          <h4 className="font-semibold text-gray-900 mb-3 flex items-center">
-                            <ChefHat className="w-4 h-4 mr-2 text-emerald-600" />
-                            Ingredients:
-                          </h4>
-                          <ul className="text-sm space-y-1 text-gray-700">
-                            {selectedRecipe.ingredients.map((ingredient, index) => (
-                              <motion.li 
-                                key={index} 
-                                className="flex items-start"
-                                initial={{ x: -10, opacity: 0 }}
-                                animate={{ x: 0, opacity: 1 }}
-                                transition={{ duration: 0.2, delay: 0.4 + (index * 0.05) }}
+                            {selectedRecipeId === recipe.id && (
+                              <motion.div
+                                className="absolute inset-0 bg-emerald-500/10 flex items-center justify-center"
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                transition={{ duration: 0.2 }}
                               >
-                                <span className="text-emerald-500 mr-2">•</span>
-                                <span>{ingredient}</span>
-                              </motion.li>
-                            ))}
-                          </ul>
-                        </motion.div>
-                        
-                        <motion.div
-                          initial={{ y: 20, opacity: 0 }}
-                          animate={{ y: 0, opacity: 1 }}
-                          transition={{ duration: 0.3, delay: 0.5 }}
-                        >
-                          <h4 className="font-semibold text-gray-900 mb-3 flex items-center">
-                            <Clock className="w-4 h-4 mr-2 text-emerald-600" />
-                            Instructions:
-                          </h4>
-                          <ol className="text-sm space-y-2 text-gray-700">
-                            {selectedRecipe.instructions.map((instruction, index) => (
-                              <motion.li 
-                                key={index} 
-                                className="space-y-1"
-                                initial={{ x: -10, opacity: 0 }}
-                                animate={{ x: 0, opacity: 1 }}
-                                transition={{ duration: 0.3, delay: 0.6 + (index * 0.1) }}
-                              >
-                                <div className="flex items-start space-x-2">
-                                  <div className="w-5 h-5 bg-emerald-100 text-emerald-700 rounded-full flex items-center justify-center text-xs font-semibold flex-shrink-0 mt-0.5">
-                                    {index + 1}
-                                  </div>
-                                  <div>
-                                    <div className="font-medium text-gray-900">{instruction.title}</div>
-                                    <div className="text-gray-600 text-xs mt-1">{instruction.detail}</div>
-                                  </div>
+                                <div className="w-6 h-6 bg-emerald-500 rounded-full flex items-center justify-center shadow-lg">
+                                  <ChefHat className="w-3 h-3 text-white" />
                                 </div>
-                              </motion.li>
-                            ))}
-                          </ol>
-                        </motion.div>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </motion.div>
+                              </motion.div>
+                            )}
+                          </div>
+                          <CardContent className="p-3">
+                            <h3 className={`font-semibold text-sm mb-1 transition-colors ${
+                              selectedRecipeId === recipe.id ? 'text-emerald-800' : 'text-gray-900'
+                            }`}>
+                              {recipe.name}
+                            </h3>
+                            <div className="flex items-center justify-between text-xs text-gray-500">
+                              <span>🕒 {recipe.time}</span>
+                              <span>{recipe.calories} cal</span>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      </motion.div>
+                    ))}
+                  </div>
+
+                  {/* Progress Indicators */}
+                  <div className="flex justify-center mt-6 space-x-2">
+                    {Array.from({ length: totalPages }).map((_, index) => (
+                      <div
+                        key={index}
+                        className={`w-2 h-2 rounded-full transition-colors duration-300 ${
+                          Math.floor(currentRecipeIndex / recipesPerPage) === index
+                            ? 'bg-emerald-500'
+                            : 'bg-gray-300'
+                        }`}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Right side - Main Recipe Display */}
+              <div className="lg:col-span-3 order-1 lg:order-2">
+                {selectedRecipe && (
+                  <motion.div
+                    key={selectedRecipe.id}
+                    initial={{ opacity: 0, x: 20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ duration: 0.4, ease: "easeOut" }}
+                  >
+                    <Card className="bg-white/90 dark:glass-strong backdrop-blur-lg shadow-xl border-0 dark:border dark:border-white/10 overflow-hidden">
+                      <CardContent className="p-4 sm:p-6 lg:p-8">
+                        <div className="grid md:grid-cols-2 gap-4 sm:gap-6 lg:gap-8">
+                          <div>
+                            <motion.img
+                              src={selectedRecipe.image}
+                              alt={selectedRecipe.name}
+                              className="w-full h-64 object-cover rounded-lg mb-6 shadow-lg"
+                              initial={{ scale: 0.95, opacity: 0 }}
+                              animate={{ scale: 1, opacity: 1 }}
+                              transition={{ duration: 0.3, delay: 0.1 }}
+                            />
+                            <motion.div
+                              className="text-center"
+                              initial={{ y: 10, opacity: 0 }}
+                              animate={{ y: 0, opacity: 1 }}
+                              transition={{ duration: 0.3, delay: 0.2 }}
+                            >
+                              <h3 className="text-3xl font-bold text-gray-900 mb-2">
+                                {selectedRecipe.name}
+                              </h3>
+                              <div className="flex flex-col items-center space-y-2">
+                                <div className="flex items-center justify-center space-x-4 text-sm text-gray-500">
+                                  <span>🕒 {selectedRecipe.time}</span>
+                                  <Badge className="bg-emerald-100 text-emerald-700">
+                                    {selectedRecipe.difficulty}
+                                  </Badge>
+                                </div>
+                                <div className="text-center space-y-1">
+                                  <div className="flex items-center justify-center space-x-4 text-sm">
+                                    <span className="font-medium text-emerald-600">
+                                      {selectedRecipe.calories} cal
+                                    </span>
+                                  </div>
+                                  <p className="text-xs text-gray-500 italic">
+                                    {selectedRecipe.nutritionBenefits}
+                                  </p>
+                                </div>
+                              </div>
+                            </motion.div>
+                          </div>
+
+                          <div className="space-y-6">
+                            <motion.div
+                              initial={{ y: 20, opacity: 0 }}
+                              animate={{ y: 0, opacity: 1 }}
+                              transition={{ duration: 0.3, delay: 0.3 }}
+                            >
+                              <h4 className="font-semibold text-gray-900 mb-3 flex items-center">
+                                <ChefHat className="w-4 h-4 mr-2 text-emerald-600" />
+                                Ingredients:
+                              </h4>
+                              <ul className="text-sm space-y-1 text-gray-700">
+                                {selectedRecipe.ingredients.map((ingredient: string, index: number) => (
+                                  <motion.li
+                                    key={index}
+                                    className="flex items-start"
+                                    initial={{ x: -10, opacity: 0 }}
+                                    animate={{ x: 0, opacity: 1 }}
+                                    transition={{ duration: 0.2, delay: 0.4 + (index * 0.05) }}
+                                  >
+                                    <span className="text-emerald-500 mr-2">•</span>
+                                    <span>{ingredient}</span>
+                                  </motion.li>
+                                ))}
+                              </ul>
+                            </motion.div>
+
+                            <motion.div
+                              initial={{ y: 20, opacity: 0 }}
+                              animate={{ y: 0, opacity: 1 }}
+                              transition={{ duration: 0.3, delay: 0.5 }}
+                            >
+                              <h4 className="font-semibold text-gray-900 mb-3 flex items-center">
+                                <Clock className="w-4 h-4 mr-2 text-emerald-600" />
+                                Instructions:
+                              </h4>
+                              <ol className="text-sm space-y-2 text-gray-700">
+                                {selectedRecipe.instructions.map((instruction: { title: string; detail: string }, index: number) => (
+                                  <motion.li
+                                    key={index}
+                                    className="space-y-1"
+                                    initial={{ x: -10, opacity: 0 }}
+                                    animate={{ x: 0, opacity: 1 }}
+                                    transition={{ duration: 0.3, delay: 0.6 + (index * 0.1) }}
+                                  >
+                                    <div className="flex items-start space-x-2">
+                                      <div className="w-5 h-5 bg-emerald-100 text-emerald-700 rounded-full flex items-center justify-center text-xs font-semibold flex-shrink-0 mt-0.5">
+                                        {index + 1}
+                                      </div>
+                                      <div>
+                                        <div className="font-medium text-gray-900">{instruction.title}</div>
+                                        <div className="text-gray-600 text-xs mt-1">{instruction.detail}</div>
+                                      </div>
+                                    </div>
+                                  </motion.li>
+                                ))}
+                              </ol>
+                            </motion.div>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </motion.div>
+                )}
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
     </div>
@@ -3236,7 +3041,7 @@ function Footer() {
             </span>
           </div>
           <div className="flex flex-col md:flex-row items-center space-y-2 md:space-y-0 md:space-x-4 text-sm text-gray-500 dark:text-gray-400">
-            <span>© 2024 FridgeToFork. All rights reserved.</span>
+            <span>© 2025 FridgeToFork. All rights reserved.</span>
             <span className="hidden md:inline">•</span>
             <span>Made with ❤️ for home cooks</span>
           </div>
@@ -3257,44 +3062,54 @@ export default function App() {
   });
   const [userSettings, setUserSettings] = useState<UserSettings>({
     notifications: true,
-    darkMode: false
   });
-
-  // Apply dark mode to document when setting changes
-  useEffect(() => {
-    if (userSettings.darkMode) {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-  }, [userSettings.darkMode]);
 
   // Firebase auth state persistence
   useEffect(() => {
     const unsubscribe = onAuthStateChange(async (firebaseUser) => {
       if (firebaseUser) {
         console.log('🔐 User authenticated:', firebaseUser.email);
-        
+        console.log('🔍 Initial displayName:', firebaseUser.displayName); // Debug
+
+        let name = firebaseUser.displayName || 'User';
+        if (!firebaseUser.displayName) {
+          // Fallback to Firestore if displayName is missing
+          const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
+          if (userDoc.exists()) {
+            const data = userDoc.data();
+            name = data.name || 'User';
+            console.log('🔍 Fetched name from Firestore:', name); // Debug
+          } else {
+            console.log('⚠️ No Firestore document for user:', firebaseUser.uid);
+            // Optionally log out if no document is found
+            await signOut(auth);
+            setAuth({ user: null, isLoggedIn: false });
+            return;
+          }
+        }
+
         const user: User = {
           uid: firebaseUser.uid,
           email: firebaseUser.email || '',
-          name: firebaseUser.displayName || 'User',
+          name: name,
           photoURL: firebaseUser.photoURL || undefined
         };
-        
+
         setAuth({
           user,
           isLoggedIn: true
         });
 
-        // Load user settings from Firebase
         try {
           const settingsResult = await getUserSettings(firebaseUser.uid);
           if (!settingsResult.error && settingsResult.settings) {
             setUserSettings(settingsResult.settings);
+          } else {
+            console.log('⚠️ Settings not found, using defaults:', settingsResult.error);
           }
         } catch (error) {
           console.error('Failed to load user settings:', error);
+          setUserSettings({ notifications: true, darkMode: false }); // Fallback
         }
       } else {
         console.log('🔓 User signed out');
@@ -3312,17 +3127,17 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  const handleLogin = (user: User) => {
+const handleLogin = (user: User) => {
     setAuth({
       user,
       isLoggedIn: true
     });
-    
+
     // If user was trying to access a specific feature, navigate there
     if (loginAccessFeature === 'Meal Plan') {
       setCurrentPage('meal-plan');
     }
-    
+
     // Clear the access feature flag
     setLoginAccessFeature(undefined);
   };
@@ -3338,7 +3153,6 @@ export default function App() {
       // Reset settings on logout
       setUserSettings({
         notifications: true,
-        darkMode: false
       });
     } catch (error) {
       console.error('Logout error:', error);
@@ -3347,7 +3161,7 @@ export default function App() {
 
   const handleSettingsChange = async (newSettings: UserSettings) => {
     setUserSettings(newSettings);
-    
+
     // Save settings to Firebase
     if (auth.user?.uid) {
       try {
@@ -3372,9 +3186,9 @@ export default function App() {
   // Show recipe detail if selected and user is logged in
   if (selectedRecipe && auth.isLoggedIn) {
     return (
-      <RecipeDetail 
-        recipe={selectedRecipe} 
-        onBack={() => setSelectedRecipe(null)} 
+      <RecipeDetail
+        recipe={selectedRecipe}
+        onBack={() => setSelectedRecipe(null)}
       />
     );
   }
@@ -3383,8 +3197,8 @@ export default function App() {
   if (auth.isLoggedIn) {
     return (
       <div className="min-h-screen">
-        <Navbar 
-          auth={auth} 
+        <Navbar
+          auth={auth}
           onShowLogin={() => setShowLoginModal(true)}
           onLogout={handleLogout}
           onNavigate={handleNavigate}
@@ -3406,8 +3220,8 @@ export default function App() {
   if (currentPage === 'about') {
     return (
       <div className="min-h-screen">
-        <Navbar 
-          auth={auth} 
+        <Navbar
+          auth={auth}
           onShowLogin={() => setShowLoginModal(true)}
           onLogout={handleLogout}
           onNavigate={handleNavigate}
@@ -3418,8 +3232,8 @@ export default function App() {
         />
         <AboutPage auth={auth} onNavigate={handleNavigate} />
         <Footer />
-        
-        <LoginModal 
+
+        <LoginModal
           isOpen={showLoginModal}
           onClose={() => {
             setShowLoginModal(false);
@@ -3435,8 +3249,8 @@ export default function App() {
   return (
     <div className="min-h-screen bg-white">
       <ScrollIndicator />
-      <Navbar 
-        auth={auth} 
+      <Navbar
+        auth={auth}
         onShowLogin={() => setShowLoginModal(true)}
         onLogout={handleLogout}
         onNavigate={handleNavigate}
@@ -3448,8 +3262,8 @@ export default function App() {
       <HeroSection />
       <SDG12Section />
       <Footer />
-      
-      <LoginModal 
+
+      <LoginModal
         isOpen={showLoginModal}
         onClose={() => {
           setShowLoginModal(false);

@@ -13,27 +13,27 @@ export const getEnvVar = (key: string, fallback?: string): string | undefined =>
     if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env[key]) {
       return import.meta.env[key];
     }
-    
+
     // Check if we're in a Node.js environment with process.env
     if (typeof process !== 'undefined' && process.env && process.env[key]) {
       return process.env[key];
     }
-    
+
     // Check if we're in a browser environment with window.__ENV__
     if (typeof window !== 'undefined' && (window as any).__ENV__ && (window as any).__ENV__[key]) {
       return (window as any).__ENV__[key];
     }
-    
+
     // Return fallback without warning if it's a demo value (expected behavior)
     if (fallback && (fallback.includes('demo') || fallback.includes('development'))) {
       return fallback;
     }
-    
+
     // Only warn for unexpected missing variables
     if (!fallback) {
       console.warn(`Environment variable ${key} not found and no fallback provided`);
     }
-    
+
     return fallback;
   } catch (error) {
     return fallback;
@@ -72,7 +72,7 @@ export const isEnvAvailable = (): boolean => {
     const hasImportMeta = typeof import.meta !== 'undefined' && !!import.meta.env;
     const hasProcessEnv = typeof process !== 'undefined' && !!process.env;
     const hasWindowEnv = typeof window !== 'undefined' && !!(window as any).__ENV__;
-    
+
     return hasImportMeta || hasProcessEnv || hasWindowEnv;
   } catch (error) {
     return true; // Assume available to avoid unnecessary warnings
