@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Upload, Camera, ChefHat, Sparkles, Apple, Carrot, Fish, Clock, Users, ArrowLeft, Refrigerator, X, Eye, EyeOff, Trash2, RotateCcw, Recycle, Package, Calendar, Plus, Star, Heart, Award, Github, Linkedin, Mail, Settings, Bell, BellOff, Moon, Sun, KeyRound, ChevronDown } from 'lucide-react';
+import { Upload, Camera, ChefHat, Sparkles, Apple, Carrot, Fish, Clock, Users, ArrowLeft, Refrigerator, X, Eye, EyeOff, Trash2, RotateCcw, Recycle, Package, Calendar, Plus, Star, Heart, Award, Github, Linkedin, Mail, Settings, Bell, BellOff, Moon, Sun, KeyRound, ChevronDown, Loader2 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Button } from './components/ui/button';
 import { Card, CardContent } from './components/ui/card';
@@ -40,7 +40,7 @@ import {
   Ingredient
 } from './lib/firebase';
 import { analyzeImageWithGoogleVision } from './lib/googleVision';
-import { generateRecipes, generateRecipesByDiet, getRecipesForMealPlan, generateRecipesSmart } from './lib/recipeGenerator';
+import { generateRecipes, generateRecipesWithImages, generateRecipesByDiet, getRecipesForMealPlan, generateRecipesSmart } from './lib/recipeGenerator';
 // Vite env type fix for TypeScript
 interface ImportMeta {
   env: {
@@ -1745,6 +1745,7 @@ function InventoryPage({ auth }: { auth: AuthState }) {
   const [showRecycleModal, setShowRecycleModal] = useState(false);
   const [leftoverRecipes, setLeftoverRecipes] = useState<any[]>([]);
   const [selectedLeftoverRecipe, setSelectedLeftoverRecipe] = useState<any | null>(null);
+  const [isGeneratingRecipes, setIsGeneratingRecipes] = useState(false);
 
   const handleAddToBin = (itemId: number) => {
     // Find the item in inventory
@@ -1768,6 +1769,7 @@ function InventoryPage({ auth }: { auth: AuthState }) {
 
   const handleGenerateLeftoverRecipes = async () => {
     try {
+      setIsGeneratingRecipes(true);
       console.log('🍳 Generating leftover recipes from waste management bin...');
 
       // Extract ingredient names from waste management items
@@ -1775,11 +1777,12 @@ function InventoryPage({ auth }: { auth: AuthState }) {
 
       if (ingredientNames.length === 0) {
         console.warn('⚠️ No ingredients in waste management bin');
+        setIsGeneratingRecipes(false);
         return;
       }
 
-      // Generate recipes using the same logic as Homepage
-      const generatedRecipes = generateRecipes(ingredientNames);
+      // Generate recipes using the same logic as Homepage (with images from Pexels)
+      const generatedRecipes = await generateRecipesWithImages(ingredientNames);
 
       // Set the leftover recipes
       setLeftoverRecipes(generatedRecipes);
@@ -1807,6 +1810,8 @@ function InventoryPage({ auth }: { auth: AuthState }) {
       console.log('✅ Successfully generated leftover recipes:', generatedRecipes.length);
     } catch (error) {
       console.error('❌ Error generating leftover recipes:', error);
+    } finally {
+      setIsGeneratingRecipes(false);
     }
   };
 
@@ -1959,15 +1964,22 @@ function InventoryPage({ auth }: { auth: AuthState }) {
                     Reuse
                   </h3>
                   <motion.div
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
+                    whileHover={{ scale: isGeneratingRecipes ? 1 : 1.05 }}
+                    whileTap={{ scale: isGeneratingRecipes ? 1 : 0.95 }}
                   >
                     <Button
-                      className="bg-gradient-to-r from-emerald-400 to-emerald-500 hover:from-emerald-500 hover:to-emerald-600 text-white font-bold rounded-full px-8 py-3 shadow-lg hover:shadow-xl transition-all duration-300"
+                      className="bg-gradient-to-r from-emerald-400 to-emerald-500 hover:from-emerald-500 hover:to-emerald-600 text-white font-bold rounded-full px-8 py-3 shadow-lg hover:shadow-xl transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
                       onClick={handleGenerateLeftoverRecipes}
-                      disabled={wasteManagementItems.length === 0}
+                      disabled={wasteManagementItems.length === 0 || isGeneratingRecipes}
                     >
-                      Generate Leftover Recipes
+                      {isGeneratingRecipes ? (
+                        <>
+                          <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                          Generating Recipes...
+                        </>
+                      ) : (
+                        'Generate Leftover Recipes'
+                      )}
                     </Button>
                   </motion.div>
                 </div>
@@ -2348,6 +2360,8 @@ function Homepage({ onNavigate, auth }: { onNavigate?: (page: string) => void; a
   const [currentRecipeIndex, setCurrentRecipeIndex] = useState(0);
   const [showUploadOptions, setShowUploadOptions] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [isGeneratingRecipes, setIsGeneratingRecipes] = useState(false);
 
   // Load user data
   useEffect(() => {
@@ -2413,12 +2427,12 @@ function Homepage({ onNavigate, auth }: { onNavigate?: (page: string) => void; a
         console.error('User not authenticated');
         return;
       }
-      setIsLoading(true);
+      setIsUploadingImage(true);
       console.log('🔍 Processing image for ingredient detection...');
       const visionResult = await analyzeImageWithGoogleVision(file, auth.user.uid);
       if (visionResult.error) {
         console.error('Vision API Error:', visionResult.error);
-        setIsLoading(false);
+        setIsUploadingImage(false);
         return;
       }
       const ingredientNames = visionResult.ingredients.map((ing: DetectedIngredient) => ing.name);
@@ -2433,12 +2447,14 @@ function Homepage({ onNavigate, auth }: { onNavigate?: (page: string) => void; a
       }));
       await saveDetectedIngredients(auth.user.uid, firebaseIngredients);
       await updateInventory(auth.user.uid, ingredientNames);
-      const generatedRecipesLocal = generateRecipes(ingredientNames).map((recipe, index) => ({
+      
+      // Generate recipes with Pexels images
+      const generatedRecipesLocal = (await generateRecipesWithImages(ingredientNames)).map((recipe, index) => ({
         ...recipe,
-        id: recipe.id || `recipe-${index}`,
+        id: `recipe-${index}`,
         createdAt: new Date(),
-        image: 'https://via.placeholder.com/150',
       }));
+      
       await saveGeneratedRecipes(auth.user.uid, generatedRecipesLocal);
       const updatedRecipesResult = await getUserRecipes(auth.user.uid);
       if (!updatedRecipesResult.error) {
@@ -2453,10 +2469,10 @@ function Homepage({ onNavigate, auth }: { onNavigate?: (page: string) => void; a
       }
       console.log('✅ Successfully detected and saved ingredients:', ingredientNames);
       setShowUploadOptions(false);
-      setIsLoading(false);
+      setIsUploadingImage(false);
     } catch (error) {
       console.error('❌ Error analyzing image:', error);
-      setIsLoading(false);
+      setIsUploadingImage(false);
     }
   };
 
@@ -2541,46 +2557,66 @@ function Homepage({ onNavigate, auth }: { onNavigate?: (page: string) => void; a
             onDrop={handleDrop}
           >
             <CardContent className="p-8 flex flex-col items-center">
-              <div className={`mx-auto w-20 h-20 rounded-full flex items-center justify-center transition-all duration-300 mb-4 ${
-                isDragOver ? 'bg-emerald-100 scale-110' : 'bg-gray-100'
-              }`}>
-                {isDragOver ? (
-                  <Refrigerator className="w-10 h-10 text-emerald-600" />
-                ) : (
-                  <Camera className="w-10 h-10 text-gray-400" />
-                )}
-              </div>
-              <div className="flex items-center space-x-3">
-                <span className="text-emerald-700 font-semibold text-lg">
-                  {isDragOver ? 'Drop your fridge photo!' : 'Upload Your Fridge Photo'}
-                </span>
-              </div>
-              <p className="text-gray-500 text-sm mt-2 mb-4">
-                Drag and drop or click to browse
-              </p>
-              <div className="space-y-4">
-                <div className="space-y-3">
-                  <div className="flex flex-col sm:flex-row gap-3 justify-center">
-                    <div className="relative">
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={handleFileSelect}
-                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                        id="homepage-file-upload"
-                      />
-                      <Button
-                        variant="outline"
-                        className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 w-full sm:w-auto"
-                        onClick={() => document.getElementById('homepage-file-upload')?.click()}
-                      >
-                        <Upload className="w-4 h-4 mr-2" />
-                        Upload Image
-                      </Button>
+              {isUploadingImage ? (
+                <>
+                  <div className="mx-auto w-20 h-20 rounded-full flex items-center justify-center bg-emerald-100 mb-4">
+                    <Loader2 className="w-10 h-10 text-emerald-600 animate-spin" />
+                  </div>
+                  <div className="flex flex-col items-center space-y-2">
+                    <span className="text-emerald-700 font-semibold text-lg">
+                      Analyzing Your Image...
+                    </span>
+                    <p className="text-gray-500 text-sm text-center">
+                      Detecting ingredients with AI • This may take a moment
+                    </p>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className={`mx-auto w-20 h-20 rounded-full flex items-center justify-center transition-all duration-300 mb-4 ${
+                    isDragOver ? 'bg-emerald-100 scale-110' : 'bg-gray-100'
+                  }`}>
+                    {isDragOver ? (
+                      <Refrigerator className="w-10 h-10 text-emerald-600" />
+                    ) : (
+                      <Camera className="w-10 h-10 text-gray-400" />
+                    )}
+                  </div>
+                  <div className="flex items-center space-x-3">
+                    <span className="text-emerald-700 font-semibold text-lg">
+                      {isDragOver ? 'Drop your fridge photo!' : 'Upload Your Fridge Photo'}
+                    </span>
+                  </div>
+                  <p className="text-gray-500 text-sm mt-2 mb-4">
+                    Drag and drop or click to browse
+                  </p>
+                  <div className="space-y-4">
+                    <div className="space-y-3">
+                      <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                        <div className="relative">
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={handleFileSelect}
+                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                            id="homepage-file-upload"
+                            disabled={isUploadingImage}
+                          />
+                          <Button
+                            variant="outline"
+                            className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 w-full sm:w-auto disabled:opacity-50 disabled:cursor-not-allowed"
+                            onClick={() => document.getElementById('homepage-file-upload')?.click()}
+                            disabled={isUploadingImage}
+                          >
+                            <Upload className="w-4 h-4 mr-2" />
+                            Upload Image
+                          </Button>
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </div>
-              </div>
+                </>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -2643,9 +2679,9 @@ function Homepage({ onNavigate, auth }: { onNavigate?: (page: string) => void; a
                         const newIngredients = [...detectedIngredients, ingredientName];
                         setDetectedIngredients(newIngredients);
                         await updateInventory(auth.user.uid, newIngredients);
-                        const generatedRecipesLocal = generateRecipes(newIngredients).map((recipe, index) => ({
+                        const generatedRecipesLocal = (await generateRecipesWithImages(newIngredients)).map((recipe, index) => ({
                           ...recipe,
-                          id: recipe.id || `recipe-${index}`,
+                          id: `recipe-${index}`,
                           createdAt: new Date(),
                         }));
                         await saveGeneratedRecipes(auth.user.uid, generatedRecipesLocal);
@@ -2681,9 +2717,9 @@ function Homepage({ onNavigate, auth }: { onNavigate?: (page: string) => void; a
               </Button>
               <Button
                 variant="outline"
-                className="border-emerald-200 dark:border-emerald-500/30 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-500/10"
+                className="border-emerald-200 dark:border-emerald-500/30 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 disabled:opacity-50 disabled:cursor-not-allowed"
                 onClick={async () => {
-                  setIsLoading(true);
+                  setIsGeneratingRecipes(true);
                   try {
                     const baseIngredients = ['oil', 'salt', 'pepper'];
                     const allIngredients = Array.from(new Set([...detectedIngredients, ...baseIngredients]));
@@ -2698,7 +2734,8 @@ function Homepage({ onNavigate, auth }: { onNavigate?: (page: string) => void; a
                     const recipes = Array.isArray(recipeResult)
                       ? recipeResult.map((recipe, index) => ({
                           ...recipe,
-                          id: recipe.id || `recipe-${index}`,
+                          id: `recipe-${index}`,
+                          createdAt: new Date(),
                         }))
                       : [];
                     if (!Array.isArray(recipeResult)) {
@@ -2717,12 +2754,19 @@ function Homepage({ onNavigate, auth }: { onNavigate?: (page: string) => void; a
                   } catch (error) {
                     console.error('Error generating recipes:', error);
                   } finally {
-                    setIsLoading(false);
+                    setIsGeneratingRecipes(false);
                   }
                 }}
-                disabled={detectedIngredients.length === 0 && !auth.user}
+                disabled={(detectedIngredients.length === 0 && !auth.user) || isGeneratingRecipes}
               >
-                Generate Recipe
+                {isGeneratingRecipes ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Generating...
+                  </>
+                ) : (
+                  'Generate Recipe'
+                )}
               </Button>
             </div>
           </CardContent>
@@ -2740,10 +2784,11 @@ function Homepage({ onNavigate, auth }: { onNavigate?: (page: string) => void; a
             </p>
           </div>
 
-          {isLoading ? (
+          {isGeneratingRecipes ? (
             <div className="flex flex-col items-center justify-center py-12">
-              <div className="animate-spin rounded-full h-12 w-12 border-t-4 border-b-4 border-emerald-500 mb-4"></div>
+              <Loader2 className="h-12 w-12 text-emerald-500 animate-spin mb-4" />
               <span className="text-emerald-700 font-semibold">Generating recipes...</span>
+              <p className="text-gray-500 text-sm mt-2">Finding the best recipes for your ingredients</p>
             </div>
           ) : generatedRecipes.length === 0 ? (
             <p className="text-gray-500 text-center py-8">No recipes generated yet. Add ingredients to see suggestions!</p>

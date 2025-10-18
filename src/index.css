@@ -1157,6 +1157,10 @@
     animation: var(--animate-pulse);
   }
 
+  .animate-spin {
+    animation: spin 1s linear infinite;
+  }
+
   .cursor-pointer {
     cursor: pointer;
   }
@@ -4353,6 +4357,12 @@ html {
 @property --tw-duration {
   syntax: "*";
   inherits: false
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 @keyframes ping {

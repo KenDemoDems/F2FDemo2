@@ -1,4 +1,5 @@
 import { Recipe } from './firebase';
+import { fetchFoodImage, cleanRecipeNameForSearch } from './pexelsService';
 
 // Types
 interface GeneratedRecipe extends Omit<Recipe, 'id' | 'createdAt'> {
@@ -213,6 +214,37 @@ export const generateRecipes = (
     .slice(0, maxRecipes);
 };
 
+// Local recipe generation with Pexels images
+export const generateRecipesWithImages = async (
+  availableIngredients: string[] | undefined | null,
+  maxRecipes: number = 8,
+  minMatchPercentage: number = 30
+): Promise<GeneratedRecipe[]> => {
+  const recipes = generateRecipes(availableIngredients, maxRecipes, minMatchPercentage);
+  
+  // Fetch images from Pexels for each recipe
+  const recipesWithImages = await Promise.all(
+    recipes.map(async (recipe) => {
+      try {
+        // Skip if recipe already has a valid image URL (not a figma asset)
+        if (recipe.image && !recipe.image.startsWith('figma:')) {
+          return recipe;
+        }
+        const imageUrl = await fetchFoodImage(cleanRecipeNameForSearch(recipe.name), 'landscape');
+        return {
+          ...recipe,
+          image: imageUrl
+        };
+      } catch (error) {
+        console.error(`Failed to fetch image for ${recipe.name}:`, error);
+        return recipe;
+      }
+    })
+  );
+
+  return recipesWithImages;
+};
+
 // OpenAI-powered recipe generation
 export const generateRecipesOpenAI = async (
   availableIngredients: string[],
@@ -316,8 +348,24 @@ export const generateRecipesOpenAI = async (
         id: recipe.id || `openai-recipe-${index}`
       }));
 
+    // Fetch images from Pexels for each recipe
+    const recipesWithImages = await Promise.all(
+      validRecipes.map(async (recipe) => {
+        try {
+          const imageUrl = await fetchFoodImage(cleanRecipeNameForSearch(recipe.name), 'landscape');
+          return {
+            ...recipe,
+            image: imageUrl
+          };
+        } catch (error) {
+          console.error(`Failed to fetch image for ${recipe.name}:`, error);
+          return recipe;
+        }
+      })
+    );
+
     // Filter similar recipes to keep at most 2 per similarity group
-    const filteredRecipes = filterSimilarRecipes(validRecipes, 0.8, 2);
+    const filteredRecipes = filterSimilarRecipes(recipesWithImages, 0.8, 2);
 
     return filteredRecipes.slice(0, maxRecipes);
   } catch (error) {
@@ -344,7 +392,7 @@ export const generateRecipesSmart = async (
     }
     console.warn('OpenAI recipe generation returned no valid recipes, falling back to local generation');
   }
-  return generateRecipes(availableIngredients, maxRecipes, minMatchPercentage);
+  return generateRecipesWithImages(availableIngredients, maxRecipes, minMatchPercentage);
 };
 
 // Generate recipes based on dietary preferences
