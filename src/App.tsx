@@ -10,13 +10,13 @@ import { Label } from './components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './components/ui/tabs';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from './components/ui/dropdown-menu';
 import { Switch } from './components/ui/switch';
-import imgImage5 from "figma:asset/3fedb2d27086faff5fd5d4e559738aa7837ac176.png";
-import imgImage6 from "figma:asset/2780e8169c075695ce0c5190b09759e545a810b6.png";
-import imgImage7 from "figma:asset/2e5eaf280bc2a4732907cd4c7a025b119a66136f.png";
-import imgImage8 from "figma:asset/2e5eaf280bc2a4732907cd4c7a025b119a66136f.png";
-import imgGeminiGeneratedImageTr9Lmtr9Lmtr9Lmt1 from "figma:asset/fd3d181f9b03b45cb1db14a2f11330c6278969a7.png";
-import imgPngtreeMinimalistScanCodeBorder59220522 from "figma:asset/e1deeedc6479c024d11143fe969beb240104f171.png";
-import imgImage1 from "figma:asset/c37715fd3b771e06f7d2eedbe414ca92f6f54708.png";
+import imgImage5 from "./assets/3fedb2d27086faff5fd5d4e559738aa7837ac176.png";
+import imgImage6 from "./assets/2780e8169c075695ce0c5190b09759e545a810b6.png";
+import imgImage7 from "./assets/2e5eaf280bc2a4732907cd4c7a025b119a66136f.png";
+import imgImage8 from "./assets/2e5eaf280bc2a4732907cd4c7a025b119a66136f.png";
+import imgGeminiGeneratedImageTr9Lmtr9Lmtr9Lmt1 from "./assets/fd3d181f9b03b45cb1db14a2f11330c6278969a7.png";
+import imgPngtreeMinimalistScanCodeBorder59220522 from "./assets/e1deeedc6479c024d11143fe969beb240104f171.png";
+import imgImage1 from "./assets/c37715fd3b771e06f7d2eedbe414ca92f6f54708.png";
 
 // Integrated Services
 import {
@@ -39,7 +39,17 @@ import {
   auth,
   Ingredient
 } from './lib/firebase';
+import { getDoc, doc } from 'firebase/firestore';
+import { signOut, Auth } from 'firebase/auth';
 import { analyzeImageWithGoogleVision } from './lib/googleVision';
+
+// Type for detected ingredients from Google Vision
+interface DetectedIngredient {
+  name: string;
+  confidence: number;
+  category: string;
+  detectionMethod?: string;
+}
 import { generateRecipes, generateRecipesWithImages, generateRecipesByDiet, getRecipesForMealPlan, generateRecipesSmart } from './lib/recipeGenerator';
 // Vite env type fix for TypeScript
 interface ImportMeta {
@@ -65,6 +75,23 @@ interface AuthState {
 
 interface UserSettings {
   notifications: boolean;
+}
+
+interface InventoryItem {
+  id: string;
+  name: string;
+  image: string;
+  daysLeft: number;
+  addedDate?: Date;
+  category?: string;
+}
+
+interface WasteItem {
+  id: string;
+  name: string;
+  image: string;
+  disposedAt: Date;
+  reason?: string;
 }
 
 function LoginModal({ isOpen, onClose, onLogin, accessFeature }: {
@@ -578,7 +605,7 @@ function Navbar({ auth, onShowLogin, onLogout, onNavigate, setShowLoginModal, se
                           </div>
                           <Switch
                             checked={userSettings.notifications}
-                            onCheckedChange={(checked) =>
+                            onCheckedChange={(checked: boolean) =>
                               onSettingsChange({ ...userSettings, notifications: checked })
                             }
                           />
@@ -798,7 +825,7 @@ function HeroSection() {
                 className="border-gray-300 dark:border-emerald-500/30 text-gray-700 dark:text-emerald-300 hover:bg-gray-50 dark:hover:bg-emerald-500/10 transition-colors"
                 onClick={() => {
                   // Trigger login modal to get started
-                  document.querySelector('nav button')?.click();
+                  (document.querySelector('nav button') as HTMLButtonElement)?.click();
                 }}
               >
                 <Sparkles className="w-4 h-4 mr-2" />
@@ -1029,7 +1056,7 @@ function SDG12Section() {
               <Button
                 className="bg-emerald-600 hover:bg-emerald-700 dark:emerald-gradient dark:hover:brightness-110 text-white transform hover:scale-105 transition-all px-8 py-3"
                 onClick={() => {
-                  document.querySelector('nav button')?.click(); // Trigger login modal
+                  (document.querySelector('nav button') as HTMLButtonElement)?.click(); // Trigger login modal
                 }}
               >
                 <Heart className="w-5 h-5 mr-2" />
@@ -1689,7 +1716,7 @@ function AboutPage({ auth, onNavigate }: { auth?: AuthState; onNavigate?: (page:
 }
 
 function InventoryPage({ auth }: { auth: AuthState }) {
-  const [inventoryItems, setInventoryItems] = useState([
+  const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([
   ]);
 
   // Integrated Email Notification System for Spoiling Ingredients
@@ -1747,7 +1774,7 @@ function InventoryPage({ auth }: { auth: AuthState }) {
   const [selectedLeftoverRecipe, setSelectedLeftoverRecipe] = useState<any | null>(null);
   const [isGeneratingRecipes, setIsGeneratingRecipes] = useState(false);
 
-  const handleAddToBin = (itemId: number) => {
+  const handleAddToBin = (itemId: string) => {
     // Find the item in inventory
     const itemToMove = inventoryItems.find(item => item.id === itemId);
 
@@ -2389,7 +2416,7 @@ function Homepage({ onNavigate, auth }: { onNavigate?: (page: string) => void; a
           } else if (ingredientNames.length > 0) {
             const genRecipes = generateRecipes(ingredientNames).map((recipe, index) => ({
               ...recipe,
-              id: recipe.id || `recipe-${index}`,
+              id: `recipe-${index}`,
               createdAt: new Date(),
               usedIngredients: ingredientNames,
             }));
@@ -3076,7 +3103,7 @@ export default function App() {
           } else {
             console.log('⚠️ No Firestore document for user:', firebaseUser.uid);
             // Optionally log out if no document is found
-            await signOut(auth);
+            await signOut(auth as unknown as Auth);
             setAuth({ user: null, isLoggedIn: false });
             return;
           }
@@ -3103,7 +3130,7 @@ export default function App() {
           }
         } catch (error) {
           console.error('Failed to load user settings:', error);
-          setUserSettings({ notifications: true, darkMode: false }); // Fallback
+          setUserSettings({ notifications: true }); // Fallback
         }
       } else {
         console.log('🔓 User signed out');
@@ -3112,8 +3139,7 @@ export default function App() {
           isLoggedIn: false
         });
         setUserSettings({
-          notifications: true,
-          darkMode: false
+          notifications: true
         });
       }
     });
