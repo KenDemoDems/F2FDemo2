@@ -1,7 +1,6 @@
 // Google Vision API Integration for Ingredient Detection
 import { uploadImageToStorage } from './firebase';
 import { getEnvVar } from './env';
-import ImageAnnotatorClient from '@google-cloud/vision';
 
 // Types for Google Vision API
 interface VisionLabel {
@@ -23,6 +22,26 @@ interface VisionResponse {
     description: string;
     score?: number;
   }[];
+  webDetection?: {
+    webEntities?: {
+      entityId?: string;
+      score: number;
+      description: string;
+    }[];
+    bestGuessLabels?: {
+      label: string;
+      languageCode?: string;
+    }[];
+  };
+  imagePropertiesAnnotation?: {
+    dominantColors?: {
+      colors: Array<{
+        color: { red: number; green: number; blue: number };
+        score: number;
+        pixelFraction: number;
+      }>;
+    };
+  };
 }
 
 interface DetectedIngredient {
@@ -112,85 +131,133 @@ const INGREDIENT_DATABASE = {
 
   // Vegetables
   tomato: {
-    aliases: ['tomato', 'tomatoes', 'cherry tomato', 'grape tomato', 'roma tomato', 'plum tomato', 'beefsteak tomato', 'heirloom tomato', 'vine tomato'],
+    aliases: ['tomato', 'tomatoes', 'cherry tomato', 'grape tomato', 'roma tomato', 'plum tomato', 'beefsteak tomato', 'heirloom tomato', 'vine tomato', 'vine-ripened tomato', 'garden tomato', 'campari tomato'],
     category: 'vegetables'
   },
   onion: {
-    aliases: ['onion', 'onions', 'yellow onion', 'white onion', 'red onion', 'sweet onion', 'vidalia onion', 'sliced onion', 'diced onion'],
+    aliases: ['onion', 'onions', 'yellow onion', 'white onion', 'red onion', 'sweet onion', 'vidalia onion', 'sliced onion', 'diced onion', 'purple onion', 'spanish onion', 'pearl onion', 'shallot'],
     category: 'vegetables'
   },
   potato: {
-    aliases: ['potato', 'potatoes', 'russet potato', 'red potato', 'yukon gold', 'sweet potato', 'new potato'],
+    aliases: ['potato', 'potatoes', 'russet potato', 'red potato', 'yukon gold', 'sweet potato', 'new potato', 'fingerling potato', 'white potato', 'gold potato', 'red skin potato'],
     category: 'vegetables'
   },
   carrot: {
-    aliases: ['carrot', 'carrots', 'baby carrot', 'carrot stick'],
+    aliases: ['carrot', 'carrots', 'baby carrot', 'carrot stick', 'fresh carrot', 'whole carrot', 'peeled carrot', 'orange carrot'],
     category: 'vegetables'
   },
   celery: {
-    aliases: ['celery', 'celery stalk', 'celery stick'],
+    aliases: ['celery', 'celery stalk', 'celery stick', 'celery rib', 'fresh celery'],
     category: 'vegetables'
   },
   lettuce: {
-    aliases: ['lettuce', 'romaine', 'iceberg lettuce', 'butter lettuce', 'green leaf lettuce'],
+    aliases: ['lettuce', 'romaine', 'iceberg lettuce', 'butter lettuce', 'green leaf lettuce', 'red leaf lettuce', 'boston lettuce', 'bibb lettuce', 'cos lettuce', 'salad greens'],
     category: 'vegetables'
   },
   spinach: {
-    aliases: ['spinach', 'baby spinach', 'fresh spinach', 'spinach leaf'],
+    aliases: ['spinach', 'baby spinach', 'fresh spinach', 'spinach leaf', 'spinach leaves', 'leaf spinach'],
     category: 'vegetables'
   },
   broccoli: {
-    aliases: ['broccoli', 'broccoli floret', 'broccoli crown'],
+    aliases: ['broccoli', 'broccoli floret', 'broccoli crown', 'fresh broccoli', 'broccoli head'],
     category: 'vegetables'
   },
   cauliflower: {
-    aliases: ['cauliflower', 'cauliflower floret', 'white cauliflower'],
+    aliases: ['cauliflower', 'cauliflower floret', 'white cauliflower', 'cauliflower head'],
     category: 'vegetables'
   },
   'bell pepper': {
-    aliases: ['bell pepper', 'pepper', 'sweet pepper', 'red pepper', 'green pepper', 'yellow pepper', 'orange pepper', 'capsicum'],
+    aliases: ['bell pepper', 'pepper', 'sweet pepper', 'red pepper', 'green pepper', 'yellow pepper', 'orange pepper', 'capsicum', 'red bell pepper', 'green bell pepper', 'yellow bell pepper'],
     category: 'vegetables'
   },
   cucumber: {
-    aliases: ['cucumber', 'english cucumber', 'persian cucumber', 'pickling cucumber'],
+    aliases: ['cucumber', 'english cucumber', 'persian cucumber', 'pickling cucumber', 'fresh cucumber', 'slicing cucumber'],
     category: 'vegetables'
   },
   mushroom: {
-    aliases: ['mushroom', 'button mushroom', 'portobello', 'shiitake', 'cremini', 'white mushroom'],
+    aliases: ['mushroom', 'button mushroom', 'portobello', 'shiitake', 'cremini', 'white mushroom', 'brown mushroom', 'oyster mushroom', 'chanterelle', 'porcini', 'fresh mushroom', 'sliced mushroom'],
     category: 'vegetables'
   },
   corn: {
-    aliases: ['corn', 'sweet corn', 'corn kernel', 'corn cob', 'maize'],
+    aliases: ['corn', 'sweet corn', 'corn kernel', 'corn cob', 'maize', 'corn on the cob', 'fresh corn', 'yellow corn'],
     category: 'vegetables'
   },
   zucchini: {
-    aliases: ['zucchini', 'courgette', 'summer squash'],
+    aliases: ['zucchini', 'courgette', 'summer squash', 'green zucchini', 'yellow zucchini', 'fresh zucchini'],
     category: 'vegetables'
   },
   eggplant: {
-    aliases: ['eggplant', 'aubergine', 'japanese eggplant', 'chinese eggplant'],
+    aliases: ['eggplant', 'aubergine', 'japanese eggplant', 'chinese eggplant', 'purple eggplant', 'globe eggplant'],
+    category: 'vegetables'
+  },
+  kale: {
+    aliases: ['kale', 'curly kale', 'lacinato kale', 'dinosaur kale', 'tuscan kale', 'baby kale', 'kale leaves'],
+    category: 'vegetables'
+  },
+  cabbage: {
+    aliases: ['cabbage', 'green cabbage', 'red cabbage', 'napa cabbage', 'savoy cabbage', 'purple cabbage', 'white cabbage'],
+    category: 'vegetables'
+  },
+  asparagus: {
+    aliases: ['asparagus', 'green asparagus', 'white asparagus', 'asparagus spear'],
+    category: 'vegetables'
+  },
+  peas: {
+    aliases: ['peas', 'green peas', 'garden peas', 'sweet peas', 'snap peas', 'sugar snap peas', 'snow peas'],
+    category: 'vegetables'
+  },
+  beans: {
+    aliases: ['beans', 'green beans', 'string beans', 'snap beans', 'french beans', 'kidney beans', 'black beans', 'pinto beans'],
     category: 'vegetables'
   },
 
   // Fruits
   apple: {
-    aliases: ['apple', 'apples', 'red apple', 'green apple', 'granny smith', 'fuji apple', 'gala apple'],
+    aliases: ['apple', 'apples', 'red apple', 'green apple', 'granny smith', 'fuji apple', 'gala apple', 'honeycrisp', 'golden delicious', 'fresh apple'],
     category: 'fruits'
   },
   banana: {
-    aliases: ['banana', 'bananas', 'plantain'],
+    aliases: ['banana', 'bananas', 'plantain', 'fresh banana', 'ripe banana', 'yellow banana'],
     category: 'fruits'
   },
   orange: {
-    aliases: ['orange', 'oranges', 'navel orange', 'blood orange', 'mandarin', 'tangerine'],
+    aliases: ['orange', 'oranges', 'navel orange', 'blood orange', 'mandarin', 'tangerine', 'clementine', 'valencia orange', 'fresh orange'],
     category: 'fruits'
   },
   lemon: {
-    aliases: ['lemon', 'lemons', 'meyer lemon', 'lemon wedge', 'lemon slice'],
+    aliases: ['lemon', 'lemons', 'meyer lemon', 'lemon wedge', 'lemon slice', 'fresh lemon', 'yellow lemon'],
     category: 'fruits'
   },
   lime: {
-    aliases: ['lime', 'limes', 'key lime', 'persian lime', 'lime wedge'],
+    aliases: ['lime', 'limes', 'key lime', 'persian lime', 'lime wedge', 'fresh lime', 'green lime'],
+    category: 'fruits'
+  },
+  strawberry: {
+    aliases: ['strawberry', 'strawberries', 'fresh strawberry', 'red strawberry'],
+    category: 'fruits'
+  },
+  blueberry: {
+    aliases: ['blueberry', 'blueberries', 'fresh blueberry'],
+    category: 'fruits'
+  },
+  avocado: {
+    aliases: ['avocado', 'avocados', 'hass avocado', 'fresh avocado', 'ripe avocado'],
+    category: 'fruits'
+  },
+  mango: {
+    aliases: ['mango', 'mangoes', 'fresh mango', 'ripe mango'],
+    category: 'fruits'
+  },
+  pineapple: {
+    aliases: ['pineapple', 'fresh pineapple'],
+    category: 'fruits'
+  },
+  watermelon: {
+    aliases: ['watermelon', 'fresh watermelon'],
+    category: 'fruits'
+  },
+  grape: {
+    aliases: ['grape', 'grapes', 'red grape', 'green grape', 'seedless grape'],
     category: 'fruits'
   },
 
@@ -262,7 +329,7 @@ const IGNORE_TERMS = [
   'bowl', 'plate', 'cutting board', 'knife', 'wood', 'table', 'surface'
 ];
 
-// Enhanced matching function with fuzzy matching
+// Enhanced matching function with fuzzy matching and plural handling
 const matchIngredient = (detectedText: string): string | null => {
   const lowerText = detectedText.toLowerCase().trim();
 
@@ -271,7 +338,7 @@ const matchIngredient = (detectedText: string): string | null => {
     return null;
   }
 
-  // Try exact match first
+  // Try exact match first (highest priority)
   for (const [ingredient, data] of Object.entries(INGREDIENT_DATABASE)) {
     if (data.aliases.some(alias => lowerText === alias)) {
       return ingredient;
@@ -281,15 +348,46 @@ const matchIngredient = (detectedText: string): string | null => {
   // Try partial match with word boundaries
   const words = lowerText.split(/[\s,.-]+/).filter(w => w.length > 2);
 
+  // PRIORITY 1: Full phrase contains alias exactly
   for (const [ingredient, data] of Object.entries(INGREDIENT_DATABASE)) {
     for (const alias of data.aliases) {
-      // Check if any word matches the alias
-      if (words.some(word => word === alias || alias.includes(word) || word.includes(alias))) {
+      if (lowerText.includes(` ${alias} `) || lowerText.startsWith(`${alias} `) || lowerText.endsWith(` ${alias}`) || lowerText === alias) {
         return ingredient;
       }
+    }
+  }
 
-      // Check if the full text contains the alias
-      if (lowerText.includes(alias)) {
+  // PRIORITY 2: Individual words match aliases
+  for (const [ingredient, data] of Object.entries(INGREDIENT_DATABASE)) {
+    for (const alias of data.aliases) {
+      const aliasWords = alias.split(/[\s-]+/);
+      
+      // Check if all words in alias appear in detected text
+      if (aliasWords.length > 1 && aliasWords.every(aw => words.some(w => w === aw || w.includes(aw)))) {
+        return ingredient;
+      }
+      
+      // Check if any significant word matches
+      if (words.some(word => word === alias)) {
+        return ingredient;
+      }
+    }
+  }
+
+  // PRIORITY 3: Substring matching (more lenient)
+  for (const [ingredient, data] of Object.entries(INGREDIENT_DATABASE)) {
+    for (const alias of data.aliases) {
+      // Longer aliases (more specific) get priority
+      if (alias.length >= 5 && lowerText.includes(alias)) {
+        return ingredient;
+      }
+    }
+  }
+
+  // PRIORITY 4: Reverse substring matching for compound words
+  for (const [ingredient, data] of Object.entries(INGREDIENT_DATABASE)) {
+    for (const alias of data.aliases) {
+      if (alias.length >= 4 && words.some(word => word.includes(alias) && word.length <= alias.length + 2)) {
         return ingredient;
       }
     }
@@ -326,6 +424,59 @@ const detectSmallIngredients = (visionResponse: VisionResponse): Set<string> => 
   return smallIngredients;
 };
 
+// Enhanced color-based ingredient hints
+const analyzeColorHints = (visionResponse: VisionResponse): Set<string> => {
+  const colorBasedHints = new Set<string>();
+  
+  if (!visionResponse.imagePropertiesAnnotation?.dominantColors) {
+    return colorBasedHints;
+  }
+
+  const colors = visionResponse.imagePropertiesAnnotation.dominantColors.colors;
+  
+  for (const colorInfo of colors) {
+    const { red, green, blue } = colorInfo.color;
+    const pixelFraction = colorInfo.pixelFraction;
+    
+    // Only consider significant colors (>5% of image)
+    if (pixelFraction < 0.05) continue;
+    
+    // Red colors - tomatoes, peppers, etc.
+    if (red > 180 && green < 100 && blue < 100) {
+      colorBasedHints.add('tomato');
+      colorBasedHints.add('bell pepper');
+    }
+    
+    // Green colors - herbs, vegetables
+    if (green > 150 && red < 120 && blue < 120) {
+      colorBasedHints.add('basil');
+      colorBasedHints.add('parsley');
+      colorBasedHints.add('spinach');
+      colorBasedHints.add('lettuce');
+    }
+    
+    // Orange colors - carrots, peppers
+    if (red > 200 && green > 100 && green < 180 && blue < 80) {
+      colorBasedHints.add('carrot');
+      colorBasedHints.add('bell pepper');
+    }
+    
+    // White/cream colors - onion, garlic, cheese
+    if (red > 200 && green > 200 && blue > 200) {
+      colorBasedHints.add('onion');
+      colorBasedHints.add('garlic');
+    }
+    
+    // Brown colors - potato, mushroom
+    if (red > 120 && red < 180 && green > 80 && green < 140 && blue > 40 && blue < 100) {
+      colorBasedHints.add('potato');
+      colorBasedHints.add('mushroom');
+    }
+  }
+  
+  return colorBasedHints;
+};
+
 // Context-aware ingredient detection
 const analyzeIngredientContext = (visionResponse: VisionResponse): Map<string, number> => {
   const contextScores = new Map<string, number>();
@@ -342,11 +493,18 @@ const analyzeIngredientContext = (visionResponse: VisionResponse): Map<string, n
   if (visionResponse.textAnnotations && visionResponse.textAnnotations.length > 0) {
     allDetections.push(...visionResponse.textAnnotations.slice(1).map(t => t.description.toLowerCase()));
   }
+  if (visionResponse.webDetection?.webEntities) {
+    allDetections.push(...visionResponse.webDetection.webEntities.map(e => e.description.toLowerCase()));
+  }
+  if (visionResponse.webDetection?.bestGuessLabels) {
+    allDetections.push(...visionResponse.webDetection.bestGuessLabels.map(l => l.label.toLowerCase()));
+  }
 
   // Look for cooking-related context
   const cookingContext = allDetections.some(d =>
     d.includes('cooking') || d.includes('kitchen') || d.includes('recipe') ||
-    d.includes('food') || d.includes('ingredient')
+    d.includes('food') || d.includes('ingredient') || d.includes('produce') ||
+    d.includes('grocery') || d.includes('vegetable') || d.includes('fruit')
   );
 
   // Boost scores for ingredients that appear in cooking context
@@ -354,8 +512,24 @@ const analyzeIngredientContext = (visionResponse: VisionResponse): Map<string, n
     for (const detection of allDetections) {
       const matched = matchIngredient(detection);
       if (matched) {
-        contextScores.set(matched, (contextScores.get(matched) || 0) + 0.1);
+        contextScores.set(matched, (contextScores.get(matched) || 0) + 0.15);
       }
+    }
+  }
+
+  // Multi-mention boost - if same ingredient appears multiple times
+  const mentionCounts = new Map<string, number>();
+  for (const detection of allDetections) {
+    const matched = matchIngredient(detection);
+    if (matched) {
+      mentionCounts.set(matched, (mentionCounts.get(matched) || 0) + 1);
+    }
+  }
+
+  // Give extra boost to ingredients mentioned multiple times
+  for (const [ingredient, count] of mentionCounts) {
+    if (count >= 2) {
+      contextScores.set(ingredient, (contextScores.get(ingredient) || 0) + (count - 1) * 0.08);
     }
   }
 
@@ -408,7 +582,7 @@ const processVisionResults = (visionResponse: VisionResponse): DetectedIngredien
       const matched = matchIngredient(obj.name);
       const confidence = obj.score || 0;
 
-      if (matched && confidence >= 0.55) {
+      if (matched && confidence >= 0.50) {
         if (!detectedIngredients.has(matched)) {
           const contextBoost = contextScores.get(matched) || 0;
 
@@ -439,7 +613,7 @@ const processVisionResults = (visionResponse: VisionResponse): DetectedIngredien
       const matched = matchIngredient(label.description);
       const confidence = label.score || 0;
 
-      if (matched && confidence >= 0.60) {
+      if (matched && confidence >= 0.55) {
         if (!detectedIngredients.has(matched)) {
           const contextBoost = contextScores.get(matched) || 0;
 
@@ -475,20 +649,100 @@ const processVisionResults = (visionResponse: VisionResponse): DetectedIngredien
     }
   });
 
-  const results = Array.from(detectedIngredients.values());
+  // METHOD 5: WEB DETECTION (high accuracy for common ingredients)
+  if (visionResponse.webDetection) {
+    console.log('🌐 Processing WEB_DETECTION...');
+    
+    // Best guess labels (very accurate)
+    if (visionResponse.webDetection.bestGuessLabels) {
+      visionResponse.webDetection.bestGuessLabels.forEach(label => {
+        const matched = matchIngredient(label.label);
+        if (matched) {
+          if (!detectedIngredients.has(matched)) {
+            const contextBoost = contextScores.get(matched) || 0;
+            detectedIngredients.set(matched, {
+              name: matched.charAt(0).toUpperCase() + matched.slice(1),
+              confidence: Math.min(0.95, 0.85 + contextBoost),
+              category: getIngredientCategory(matched),
+              detectionMethod: 'WEB'
+            });
+            console.log(`✅ WEB (best guess): ${matched} (${label.label})`);
+          } else {
+            const existing = detectedIngredients.get(matched)!;
+            existing.confidence = Math.min(0.98, existing.confidence + 0.15);
+            console.log(`📈 WEB boosted (best guess): ${matched}`);
+          }
+        }
+      });
+    }
+    
+    // Web entities (good for packaged items)
+    if (visionResponse.webDetection.webEntities) {
+      visionResponse.webDetection.webEntities.forEach(entity => {
+        if (entity.score >= 0.6 && entity.description) {
+          const matched = matchIngredient(entity.description);
+          if (matched) {
+            if (!detectedIngredients.has(matched)) {
+              const contextBoost = contextScores.get(matched) || 0;
+              detectedIngredients.set(matched, {
+                name: matched.charAt(0).toUpperCase() + matched.slice(1),
+                confidence: Math.min(0.90, entity.score + contextBoost),
+                category: getIngredientCategory(matched),
+                detectionMethod: 'WEB'
+              });
+              console.log(`✅ WEB (entity): ${matched} (${entity.description}, ${entity.score.toFixed(2)})`);
+            } else {
+              const existing = detectedIngredients.get(matched)!;
+              existing.confidence = Math.min(0.98, existing.confidence + 0.10);
+              console.log(`📈 WEB boosted (entity): ${matched}`);
+            }
+          }
+        }
+      });
+    }
+  }
 
-  console.log('📊 Final Results:', {
-    totalDetected: results.length,
-    byMethod: {
-      TEXT: results.filter(r => r.detectionMethod === 'TEXT').length,
-      OBJECT: results.filter(r => r.detectionMethod === 'OBJECT').length,
-      LABEL: results.filter(r => r.detectionMethod === 'LABEL').length,
-      CONTEXT: results.filter(r => r.detectionMethod === 'CONTEXT').length
-    },
-    ingredients: results.map(r => `${r.name} (${r.detectionMethod}, ${(r.confidence * 100).toFixed(0)}%)`)
+  // METHOD 6: COLOR-BASED HINTS (for verification and additional suggestions)
+  console.log('🎨 Analyzing color patterns...');
+  const colorHints = analyzeColorHints(visionResponse);
+  colorHints.forEach(ingredient => {
+    if (detectedIngredients.has(ingredient)) {
+      // Color confirms existing detection - boost confidence
+      const existing = detectedIngredients.get(ingredient)!;
+      existing.confidence = Math.min(0.98, existing.confidence + 0.05);
+      console.log(`📈 COLOR confirmed: ${ingredient}`);
+    } else {
+      // Color suggests new ingredient - add with medium confidence
+      detectedIngredients.set(ingredient, {
+        name: ingredient.charAt(0).toUpperCase() + ingredient.slice(1),
+        confidence: 0.65,
+        category: getIngredientCategory(ingredient),
+        detectionMethod: 'COLOR'
+      });
+      console.log(`✅ COLOR hint: ${ingredient}`);
+    }
   });
 
-  return results.sort((a, b) => b.confidence - a.confidence);
+  const results = Array.from(detectedIngredients.values());
+
+  // Apply confidence threshold filter - only return reasonable confidence results
+  const filteredResults = results.filter(r => r.confidence >= 0.55);
+
+  console.log('📊 Final Results:', {
+    totalDetected: filteredResults.length,
+    filtered: results.length - filteredResults.length,
+    byMethod: {
+      TEXT: filteredResults.filter(r => r.detectionMethod === 'TEXT').length,
+      OBJECT: filteredResults.filter(r => r.detectionMethod === 'OBJECT').length,
+      LABEL: filteredResults.filter(r => r.detectionMethod === 'LABEL').length,
+      WEB: filteredResults.filter(r => r.detectionMethod === 'WEB').length,
+      CONTEXT: filteredResults.filter(r => r.detectionMethod === 'CONTEXT').length,
+      COLOR: filteredResults.filter(r => r.detectionMethod === 'COLOR').length
+    },
+    ingredients: filteredResults.map(r => `${r.name} (${r.detectionMethod}, ${(r.confidence * 100).toFixed(0)}%)`)
+  });
+
+  return filteredResults.sort((a, b) => b.confidence - a.confidence);
 };
 
 // Main image analysis function
@@ -522,10 +776,15 @@ export const analyzeImageWithGoogleVision = async (
           features: [
             { type: 'TEXT_DETECTION', maxResults: 100 },
             { type: 'OBJECT_LOCALIZATION', maxResults: 100 },
-            { type: 'LABEL_DETECTION', maxResults: 100 }
+            { type: 'LABEL_DETECTION', maxResults: 100 },
+            { type: 'IMAGE_PROPERTIES', maxResults: 10 },
+            { type: 'WEB_DETECTION', maxResults: 50 }
           ],
           imageContext: {
-            languageHints: ['en']
+            languageHints: ['en'],
+            cropHintsParams: {
+              aspectRatios: [1.0, 1.33, 1.77]
+            }
           }
         }
       ]
