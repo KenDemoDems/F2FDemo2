@@ -4,6 +4,9 @@ import { getEnvVar } from './env';
 const PEXELS_API_KEY = getEnvVar('VITE_PEXELS_API_KEY', '');
 const PEXELS_API_URL = 'https://api.pexels.com/v1/search';
 
+// Image cache to avoid re-fetching same queries
+const imageCache = new Map<string, string>();
+
 interface PexelsPhoto {
   id: number;
   src: {
@@ -37,6 +40,12 @@ export const fetchFoodImage = async (
   size: 'large' | 'medium' | 'small' | 'landscape' = 'medium'
 ): Promise<string> => {
   try {
+    // Check cache first
+    const cacheKey = `${query}-${size}`;
+    if (imageCache.has(cacheKey)) {
+      return imageCache.get(cacheKey)!;
+    }
+
     // Check if API key is available
     if (!PEXELS_API_KEY) {
       console.warn('Pexels API key not found, using fallback image');
@@ -64,7 +73,10 @@ export const fetchFoodImage = async (
 
     if (data.photos && data.photos.length > 0) {
       const photo = data.photos[0];
-      return photo.src[size] || photo.src.medium;
+      const imageUrl = photo.src[size] || photo.src.medium;
+      // Cache the result
+      imageCache.set(cacheKey, imageUrl);
+      return imageUrl;
     }
 
     console.warn(`No images found for query: ${searchQuery}`);
