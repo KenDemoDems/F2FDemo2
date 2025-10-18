@@ -41,7 +41,6 @@ import {
 } from './lib/firebase';
 import { getDoc, doc } from 'firebase/firestore';
 import { signOut, Auth } from 'firebase/auth';
-import { analyzeImageWithGoogleVision } from './lib/googleVision';
 
 // Type for detected ingredients from Google Vision
 interface DetectedIngredient {
@@ -840,6 +839,7 @@ function HeroSection() {
               <img
                 src={imgGeminiGeneratedImageTr9Lmtr9Lmtr9Lmt1}
                 alt="AI analyzing fridge contents"
+                loading="lazy"
                 className="w-full h-auto object-cover"
                 style={{
                   mixBlendMode: 'multiply',
@@ -1146,6 +1146,7 @@ function RecipeDetail({ recipe, onBack }: { recipe: any; onBack: () => void }) {
               <img
                 src={recipe.image}
                 alt={recipe.name}
+                loading="lazy"
                 className="w-full h-64 object-cover rounded-xl shadow-lg"
               />
             </div>
@@ -1348,6 +1349,7 @@ function MealPlanPage() {
                               <img
                                 src={mealPlan[day][mealType].image}
                                 alt={mealPlan[day][mealType].name}
+                                loading="lazy"
                                 className="w-full h-12 sm:h-16 object-cover rounded mb-1 sm:mb-2"
                               />
                               <h5 className="font-medium text-xs text-gray-900 mb-1 leading-tight">
@@ -1410,6 +1412,7 @@ function MealPlanPage() {
                       <img
                         src={recipe.image}
                         alt={recipe.name}
+                        loading="lazy"
                         className="w-16 h-16 object-cover rounded"
                       />
                       <div className="flex-1">
@@ -2328,6 +2331,7 @@ function InventoryPage({ auth }: { auth: AuthState }) {
                               <img
                                 src={recipe.image}
                                 alt={recipe.name}
+                                loading="lazy"
                                 className="w-full h-40 object-cover transition-transform duration-300 group-hover:scale-110"
                               />
                               <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent"></div>
@@ -2456,6 +2460,9 @@ function Homepage({ onNavigate, auth }: { onNavigate?: (page: string) => void; a
       }
       setIsUploadingImage(true);
       console.log('🔍 Processing image for ingredient detection...');
+      
+      // Dynamically import Google Vision to reduce initial bundle size
+      const { analyzeImageWithGoogleVision } = await import('./lib/googleVision');
       const visionResult = await analyzeImageWithGoogleVision(file, auth.user.uid);
       if (visionResult.error) {
         console.error('Vision API Error:', visionResult.error);
@@ -2873,6 +2880,7 @@ function Homepage({ onNavigate, auth }: { onNavigate?: (page: string) => void; a
                             <img
                               src={recipe.image}
                               alt={recipe.name}
+                              loading="lazy"
                               className="w-full h-24 object-cover transition-transform duration-300"
                             />
                             <div className="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent"></div>
@@ -2939,6 +2947,7 @@ function Homepage({ onNavigate, auth }: { onNavigate?: (page: string) => void; a
                             <motion.img
                               src={selectedRecipe.image}
                               alt={selectedRecipe.name}
+                              loading="lazy"
                               className="w-full h-64 object-cover rounded-lg mb-6 shadow-lg"
                               initial={{ scale: 0.95, opacity: 0 }}
                               animate={{ scale: 1, opacity: 1 }}

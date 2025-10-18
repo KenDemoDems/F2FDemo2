@@ -59,6 +59,26 @@
     build: {
       target: 'esnext',
       outDir: 'dist',
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            'react-vendor': ['react', 'react-dom'],
+            'motion': ['motion'],
+            'firebase': ['firebase/app', 'firebase/auth', 'firebase/firestore', 'firebase/storage'],
+            'radix-ui': [
+              '@radix-ui/react-dialog',
+              '@radix-ui/react-dropdown-menu',
+              '@radix-ui/react-tabs',
+              '@radix-ui/react-switch',
+              '@radix-ui/react-label',
+              '@radix-ui/react-slot',
+            ],
+            'icons': ['lucide-react'],
+          },
+        },
+      },
+      chunkSizeWarningLimit: 600,
+      minify: 'esbuild',
     },
     server: {
       port: 3000,
