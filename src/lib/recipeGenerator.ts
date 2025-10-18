@@ -1,4 +1,3 @@
-// Recipe Generation Logic for FridgeToFork
 import { Recipe } from './firebase';
 
 // Types
@@ -113,8 +112,62 @@ const RECIPE_DATABASE: Omit<Recipe, 'id' | 'createdAt'>[] = [
       { title: "Serve", detail: "Garnish with green onions and serve hot over rice if desired." }
     ]
   },
-  // Add more recipes here if you have them from the full database
 ];
+
+// Helper function to calculate Jaccard similarity between two ingredient lists
+function calculateRecipeSimilarity(ingredients1: string[], ingredients2: string[]): number {
+  const set1 = new Set(ingredients1.map(i => i.toLowerCase()));
+  const set2 = new Set(ingredients2.map(i => i.toLowerCase()));
+  const intersection = new Set([...set1].filter(i => set2.has(i)));
+  const union = new Set([...set1, ...set2]);
+  return intersection.size / union.size;
+}
+
+// Helper function to filter similar recipes
+function filterSimilarRecipes(recipes: GeneratedRecipe[], similarityThreshold: number = 0.8, maxSimilar: number = 2): GeneratedRecipe[] {
+  const selectedRecipes: GeneratedRecipe[] = [];
+  const usedIngredientsSets: Set<string>[] = [];
+
+  // Sort by matchPercentage to prioritize better matches
+  const sortedRecipes = [...recipes].sort((a, b) => b.matchPercentage - a.matchPercentage);
+
+  for (const recipe of sortedRecipes) {
+    const currentIngredientsSet = new Set(recipe.usedIngredients.map(i => i.toLowerCase()));
+    let isSimilar = false;
+
+    // Check if recipe is similar to any already selected recipe
+    for (let i = 0; i < usedIngredientsSets.length; i++) {
+      const similarity = calculateRecipeSimilarity(
+        Array.from(currentIngredientsSet),
+        Array.from(usedIngredientsSets[i])
+      );
+      if (similarity >= similarityThreshold) {
+        // Count how many similar recipes are already selected
+        const similarCount = usedIngredientsSets.filter((set, idx) => {
+          const sim = calculateRecipeSimilarity(
+            Array.from(currentIngredientsSet),
+            Array.from(set)
+          );
+          return sim >= similarityThreshold;
+        }).length;
+        if (similarCount < maxSimilar) {
+          selectedRecipes.push(recipe);
+          usedIngredientsSets.push(currentIngredientsSet);
+        }
+        isSimilar = true;
+        break;
+      }
+    }
+
+    // If not similar to any selected recipe, add it
+    if (!isSimilar) {
+      selectedRecipes.push(recipe);
+      usedIngredientsSets.push(currentIngredientsSet);
+    }
+  }
+
+  return selectedRecipes;
+}
 
 // Helper function to calculate match percentage
 function calculateMatchPercentage(recipeIngredients: string[], availableIngredients: string[]): number {
@@ -152,7 +205,10 @@ export const generateRecipes = (
     }
   });
 
-  return generatedRecipes
+  // Filter similar recipes to keep at most 2 per similarity group
+  const filteredRecipes = filterSimilarRecipes(generatedRecipes, 0.8, 2);
+
+  return filteredRecipes
     .sort((a, b) => b.matchPercentage - a.matchPercentage)
     .slice(0, maxRecipes);
 };
@@ -166,21 +222,39 @@ export const generateRecipesOpenAI = async (
   // Defensive: Ensure availableIngredients is an array
   if (!Array.isArray(availableIngredients) || availableIngredients.length === 0) return [];
   try {
-    const prompt = `Suggest ${maxRecipes} creative recipes primarily using these ingredients: ${availableIngredients.join(", ")}. 
-    Prioritize recipes that use as many of the provided ingredients as possible, but you can suggest minor additional common pantry items if needed.
-    For each recipe, provide exactly these fields:
-    - name: string (recipe title)
-    - image: string (use a placeholder like 'placeholder.jpg')
+    const prompt = `Generate exactly ${maxRecipes} creative and diverse recipes using primarily these ingredients: ${availableIngredients.join(", ")}.
+    Prioritize recipes that maximize the use of provided ingredients, but you may include minor additional pantry items (e.g., salt, pepper, oil) if necessary. Ensure recipes are distinct from each other, avoiding multiple variations of the same dish (e.g., different pasta dishes with similar ingredients).
+    Return a JSON object with a single key "recipes" containing an array of recipe objects. Each recipe must include:
+    - name: string (recipe title, unique and descriptive)
+    - image: string (use 'placeholder.jpg')
     - time: string (e.g., '20 min')
-    - difficulty: string (e.g., 'Easy')
+    - difficulty: string (e.g., 'Easy', 'Medium', 'Hard')
     - calories: number (approximate total calories)
     - nutritionBenefits: string (brief benefits, e.g., 'High in protein')
     - usedIngredients: string[] (array of ingredients from the provided list that are used)
     - ingredients: string[] (full list of ingredients with quantities)
-    - instructions: Array<{title: string, detail: string}> (step-by-step instructions as array of objects)
-    
-    Output only a valid JSON object with a key "recipes" containing an array of these objects. No extra text.`;
-    
+    - instructions: Array<{title: string, detail: string}> (step-by-step instructions)
+
+    Ensure the response is valid JSON with no additional text, comments, or markdown. Example:
+    {
+      "recipes": [
+        {
+          "name": "Sample Recipe",
+          "image": "placeholder.jpg",
+          "time": "20 min",
+          "difficulty": "Easy",
+          "calories": 300,
+          "nutritionBenefits": "High in protein",
+          "usedIngredients": ["ingredient1", "ingredient2"],
+          "ingredients": ["1 cup ingredient1", "2 tbsp ingredient2"],
+          "instructions": [
+            {"title": "Step 1", "detail": "Do something"},
+            {"title": "Step 2", "detail": "Do another thing"}
+          ]
+        }
+      ]
+    }`;
+
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -188,31 +262,64 @@ export const generateRecipesOpenAI = async (
         'Authorization': `Bearer ${apiKey}`
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini', // Valid, cost-effective model with JSON support
+        model: 'gpt-4o-mini',
         messages: [{ role: 'user', content: prompt }],
         response_format: { type: "json_object" },
-        max_tokens: 2000, // Increased for detailed responses
+        max_tokens: 2000,
         temperature: 0.7
       })
     });
 
     if (!response.ok) {
-      throw new Error(`OpenAI API error: ${response.status} - ${await response.text()}`);
+      const errorText = await response.text();
+      throw new Error(`OpenAI API error: ${response.status} - ${errorText}`);
     }
 
     const data = await response.json();
-    const text = data.choices?.[0]?.message?.content || '';
-    const parsed = JSON.parse(text);
-    let recipes: GeneratedRecipe[] = parsed.recipes || [];
+    const text = data.choices?.[0]?.message?.content;
+    if (!text) {
+      console.error('OpenAI API returned empty content');
+      return [];
+    }
 
-    // Post-process to add matchPercentage and missingIngredients
-    recipes = recipes.map((recipe: any) => ({
-      ...recipe,
-      matchPercentage: calculateMatchPercentage(recipe.usedIngredients, availableIngredients),
-      missingIngredients: findMissingIngredients(recipe.ingredients, availableIngredients) // Assuming ingredients is the full list
-    }));
+    let parsed;
+    try {
+      parsed = JSON.parse(text);
+    } catch (parseError) {
+      console.error('Failed to parse OpenAI response as JSON:', parseError);
+      console.error('Raw response:', text);
+      return [];
+    }
 
-    return recipes.slice(0, maxRecipes);
+    const recipes: GeneratedRecipe[] = parsed.recipes || [];
+    if (!Array.isArray(recipes)) {
+      console.error('OpenAI response "recipes" is not an array:', parsed);
+      return [];
+    }
+
+    // Validate and post-process recipes
+    const validRecipes = recipes
+      .filter(recipe => {
+        const isValid = recipe.name && recipe.time && recipe.difficulty && typeof recipe.calories === 'number' &&
+          recipe.nutritionBenefits && Array.isArray(recipe.usedIngredients) && Array.isArray(recipe.ingredients) &&
+          Array.isArray(recipe.instructions) && recipe.instructions.every((inst: any) => inst.title && inst.detail);
+        if (!isValid) {
+          console.warn('Invalid recipe format:', recipe);
+        }
+        return isValid;
+      })
+      .map((recipe: any, index: number) => ({
+        ...recipe,
+        image: recipe.image || 'placeholder.jpg',
+        matchPercentage: calculateMatchPercentage(recipe.usedIngredients, availableIngredients),
+        missingIngredients: findMissingIngredients(recipe.ingredients, availableIngredients),
+        id: recipe.id || `openai-recipe-${index}`
+      }));
+
+    // Filter similar recipes to keep at most 2 per similarity group
+    const filteredRecipes = filterSimilarRecipes(validRecipes, 0.8, 2);
+
+    return filteredRecipes.slice(0, maxRecipes);
   } catch (error) {
     console.error('OpenAI recipe generation failed:', error);
     return [];
@@ -227,7 +334,15 @@ export const generateRecipesSmart = async (
   minMatchPercentage: number = 30
 ): Promise<GeneratedRecipe[]> => {
   if (apiKey) {
-    return await generateRecipesOpenAI(Array.isArray(availableIngredients) ? availableIngredients : [], apiKey, maxRecipes);
+    const openAiRecipes = await generateRecipesOpenAI(
+      Array.isArray(availableIngredients) ? availableIngredients : [],
+      apiKey,
+      maxRecipes
+    );
+    if (openAiRecipes.length > 0) {
+      return openAiRecipes;
+    }
+    console.warn('OpenAI recipe generation returned no valid recipes, falling back to local generation');
   }
   return generateRecipes(availableIngredients, maxRecipes, minMatchPercentage);
 };
@@ -240,7 +355,6 @@ export const generateRecipesByDiet = (
 ): GeneratedRecipe[] => {
   let filteredDatabase = RECIPE_DATABASE;
 
-  // Filter based on dietary preferences
   if (dietaryPreferences.includes('vegetarian')) {
     filteredDatabase = filteredDatabase.filter(recipe =>
       !recipe.usedIngredients.some(ingredient =>
@@ -265,7 +379,6 @@ export const generateRecipesByDiet = (
     );
   }
 
-  // Generate recipes from filtered database
   const generatedRecipes: GeneratedRecipe[] = [];
 
   filteredDatabase.forEach(recipe => {
@@ -281,7 +394,10 @@ export const generateRecipesByDiet = (
     }
   });
 
-  return generatedRecipes
+  // Filter similar recipes to keep at most 2 per similarity group
+  const filteredRecipes = filterSimilarRecipes(generatedRecipes, 0.8, 2);
+
+  return filteredRecipes
     .sort((a, b) => b.matchPercentage - a.matchPercentage)
     .slice(0, maxRecipes);
 };
@@ -322,7 +438,10 @@ export const getRecipesForMealPlan = (
     });
   });
 
-  return generatedRecipes.sort((a, b) => b.matchPercentage - a.matchPercentage);
+  // Filter similar recipes to keep at most 2 per similarity group
+  const filteredRecipes = filterSimilarRecipes(generatedRecipes, 0.8, 2);
+
+  return filteredRecipes.sort((a, b) => b.matchPercentage - a.matchPercentage);
 };
 
 // Get shopping list from missing ingredients

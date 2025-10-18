@@ -2342,62 +2342,60 @@ function InventoryPage({ auth }: { auth: AuthState }) {
 
 function Homepage({ onNavigate, auth }: { onNavigate?: (page: string) => void; auth: AuthState }) {
   const [detectedIngredients, setDetectedIngredients] = useState<string[]>([]);
-  const [generatedRecipes, setGeneratedRecipes] = useState<any[]>([]); // Use Recipe[] if type is defined
+  const [generatedRecipes, setGeneratedRecipes] = useState<any[]>([]);
   const [selectedRecipeId, setSelectedRecipeId] = useState<string | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const [currentRecipeIndex, setCurrentRecipeIndex] = useState(0);
   const [showUploadOptions, setShowUploadOptions] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Load user's ingredients and recipes on component mount
+  // Load user data
   useEffect(() => {
     const loadUserData = async () => {
       if (auth.user?.uid) {
         try {
           setIsLoading(true);
-
-          // Load user ingredients
           const ingredientsResult = await getUserIngredients(auth.user.uid);
           let ingredientNames: string[] = [];
           if (!ingredientsResult.error && ingredientsResult.ingredients.length > 0) {
             ingredientNames = ingredientsResult.ingredients.map(ing => ing.name);
             setDetectedIngredients(ingredientNames);
           } else {
-            // Use demo data if no ingredients found
             ingredientNames = [];
             setDetectedIngredients(ingredientNames);
           }
 
-          // Load user recipes
           const recipesResult = await getUserRecipes(auth.user.uid);
           let recipes: any[] = [];
           if (!recipesResult.error && recipesResult.recipes.length > 0) {
-            recipes = recipesResult.recipes;
-          } else if (ingredientNames.length > 0) {
-            // Generate recipes if none exist but ingredients are available
-            const genRecipes = generateRecipes(ingredientNames);
-            const recipesForSave = genRecipes.map(recipe => ({
+            recipes = recipesResult.recipes.map((recipe, index) => ({
               ...recipe,
-              id: '',
-              createdAt: new Date(),
-              usedIngredients: ingredientNames // Optional, if your Recipe type supports it
+              id: recipe.id || `recipe-${index}`,
             }));
-            await saveGeneratedRecipes(auth.user.uid, recipesForSave);
+          } else if (ingredientNames.length > 0) {
+            const genRecipes = generateRecipes(ingredientNames).map((recipe, index) => ({
+              ...recipe,
+              id: recipe.id || `recipe-${index}`,
+              createdAt: new Date(),
+              usedIngredients: ingredientNames,
+            }));
+            await saveGeneratedRecipes(auth.user.uid, genRecipes);
             const updatedRecipesResult = await getUserRecipes(auth.user.uid);
             if (!updatedRecipesResult.error) {
-              recipes = updatedRecipesResult.recipes;
+              recipes = updatedRecipesResult.recipes.map((recipe, index) => ({
+                ...recipe,
+                id: recipe.id || `recipe-${index}`,
+              }));
             }
           }
           setGeneratedRecipes(recipes);
           if (recipes.length > 0) {
             setSelectedRecipeId(recipes[0].id);
           }
-
         } catch (error) {
           console.error('Failed to load user data:', error);
-          // Fallback to demo data
           setDetectedIngredients(['Apple', 'Tomato', 'Cheese', 'Milk']);
-          setGeneratedRecipes([]); // Or use hardcoded allRecipes if needed for fallback
+          setGeneratedRecipes([]);
           setSelectedRecipeId(null);
         } finally {
           setIsLoading(false);
@@ -2406,7 +2404,6 @@ function Homepage({ onNavigate, auth }: { onNavigate?: (page: string) => void; a
         setIsLoading(false);
       }
     };
-
     loadUserData();
   }, [auth.user?.uid]);
 
@@ -2416,51 +2413,44 @@ function Homepage({ onNavigate, auth }: { onNavigate?: (page: string) => void; a
         console.error('User not authenticated');
         return;
       }
-
       setIsLoading(true);
       console.log('🔍 Processing image for ingredient detection...');
-
       const visionResult = await analyzeImageWithGoogleVision(file, auth.user.uid);
-
       if (visionResult.error) {
         console.error('Vision API Error:', visionResult.error);
         setIsLoading(false);
         return;
       }
-
       const ingredientNames = visionResult.ingredients.map((ing: DetectedIngredient) => ing.name);
       setDetectedIngredients(ingredientNames);
-
       const firebaseIngredients: Ingredient[] = visionResult.ingredients.map((ing: DetectedIngredient) => ({
         id: '',
         name: ing.name,
         detectedAt: new Date(),
         addedManually: false,
         confidence: ing.confidence,
-        category: ing.category || 'detected'
+        category: ing.category || 'detected',
       }));
-
       await saveDetectedIngredients(auth.user.uid, firebaseIngredients);
       await updateInventory(auth.user.uid, ingredientNames);
-
-      const generatedRecipesLocal = generateRecipes(ingredientNames);
-      const recipesForSave = generatedRecipesLocal.map(recipe => ({
+      const generatedRecipesLocal = generateRecipes(ingredientNames).map((recipe, index) => ({
         ...recipe,
-        id: '',
+        id: recipe.id || `recipe-${index}`,
         createdAt: new Date(),
-        image: 'https://via.placeholder.com/150' // Placeholder since no Storage
+        image: 'https://via.placeholder.com/150',
       }));
-
-      await saveGeneratedRecipes(auth.user.uid, recipesForSave);
-
+      await saveGeneratedRecipes(auth.user.uid, generatedRecipesLocal);
       const updatedRecipesResult = await getUserRecipes(auth.user.uid);
       if (!updatedRecipesResult.error) {
-        setGeneratedRecipes(updatedRecipesResult.recipes);
-        if (updatedRecipesResult.recipes.length > 0) {
-          setSelectedRecipeId(updatedRecipesResult.recipes[0].id);
+        const recipes = updatedRecipesResult.recipes.map((recipe, index) => ({
+          ...recipe,
+          id: recipe.id || `recipe-${index}`,
+        }));
+        setGeneratedRecipes(recipes);
+        if (recipes.length > 0) {
+          setSelectedRecipeId(recipes[0].id);
         }
       }
-
       console.log('✅ Successfully detected and saved ingredients:', ingredientNames);
       setShowUploadOptions(false);
       setIsLoading(false);
@@ -2502,7 +2492,6 @@ function Homepage({ onNavigate, auth }: { onNavigate?: (page: string) => void; a
     return <div className="text-center py-12">Loading your data...</div>;
   }
 
-  const selectedRecipe = generatedRecipes.find(r => r.id === selectedRecipeId) || (generatedRecipes[0] || null);
   const recipesPerPage = 4;
   const totalPages = Math.ceil(generatedRecipes.length / recipesPerPage);
   const currentPageRecipes = generatedRecipes.slice(
@@ -2510,39 +2499,23 @@ function Homepage({ onNavigate, auth }: { onNavigate?: (page: string) => void; a
     currentRecipeIndex + recipesPerPage
   );
 
+  const selectedRecipe = generatedRecipes.find(r => r.id === selectedRecipeId) || null;
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-teal-50 to-green-50 dark:bg-gradient-to-br dark:from-gray-900 dark:via-emerald-950/20 dark:to-teal-950/20 relative overflow-hidden">
-      {/* Background animations */}
       <div className="absolute inset-0 overflow-hidden">
         <motion.div
           className="absolute -top-40 -right-40 w-80 h-80 bg-emerald-200/20 dark:floating-orb-1 rounded-full blur-3xl"
-          animate={{
-            x: [0, 50, 0],
-            y: [0, -30, 0],
-            scale: [1, 1.1, 1],
-          }}
-          transition={{
-            duration: 8,
-            repeat: Infinity,
-            ease: "easeInOut",
-          }}
+          animate={{ x: [0, 50, 0], y: [0, -30, 0], scale: [1, 1.1, 1] }}
+          transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }}
         />
         <motion.div
           className="absolute -bottom-40 -left-40 w-96 h-96 bg-teal-200/20 dark:floating-orb-2 rounded-full blur-3xl"
-          animate={{
-            x: [0, -40, 0],
-            y: [0, 20, 0],
-            scale: [1, 0.9, 1],
-          }}
-          transition={{
-            duration: 10,
-            repeat: Infinity,
-            ease: "easeInOut",
-          }}
+          animate={{ x: [0, -40, 0], y: [0, 20, 0], scale: [1, 0.9, 1] }}
+          transition={{ duration: 10, repeat: Infinity, ease: "easeInOut" }}
         />
       </div>
 
-      {/* Floating food icons */}
       <div className="absolute inset-0 pointer-events-none">
         <FloatingElement delay={0}>
           <Apple className="absolute top-1/4 left-1/6 w-6 h-6 text-emerald-400/40" />
@@ -2556,7 +2529,6 @@ function Homepage({ onNavigate, auth }: { onNavigate?: (page: string) => void; a
       </div>
 
       <div className="max-w-6xl mx-auto px-6 py-8 relative z-10">
-        {/* Upload Section */}
         <div className="mb-12">
           <Card
             className={`max-w-lg mx-auto border-2 border-dashed transition-all duration-300 hover:shadow-xl ${
@@ -2564,10 +2536,7 @@ function Homepage({ onNavigate, auth }: { onNavigate?: (page: string) => void; a
                 ? 'border-emerald-400 dark:border-emerald-500 bg-emerald-50/50 dark:bg-emerald-500/10 shadow-lg'
                 : 'border-gray-300 dark:border-gray-600 hover:border-emerald-300 dark:hover:border-emerald-400 bg-white/80 dark:glass backdrop-blur-lg'
             }`}
-            onDragOver={(e) => {
-              e.preventDefault();
-              setIsDragOver(true);
-            }}
+            onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
             onDragLeave={() => setIsDragOver(false)}
             onDrop={handleDrop}
           >
@@ -2590,33 +2559,32 @@ function Homepage({ onNavigate, auth }: { onNavigate?: (page: string) => void; a
                 Drag and drop or click to browse
               </p>
               <div className="space-y-4">
-                  <div className="space-y-3">
-                    <div className="flex flex-col sm:flex-row gap-3 justify-center">
-                      <div className="relative">
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={handleFileSelect}
-                          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                          id="homepage-file-upload"
-                        />
-                        <Button
-                          variant="outline"
-                          className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 w-full sm:w-auto"
-                          onClick={() => document.getElementById('homepage-file-upload')?.click()}
-                        >
-                          <Upload className="w-4 h-4 mr-2" />
-                          Upload Image
-                        </Button>
-                      </div>
+                <div className="space-y-3">
+                  <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                    <div className="relative">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleFileSelect}
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                        id="homepage-file-upload"
+                      />
+                      <Button
+                        variant="outline"
+                        className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 w-full sm:w-auto"
+                        onClick={() => document.getElementById('homepage-file-upload')?.click()}
+                      >
+                        <Upload className="w-4 h-4 mr-2" />
+                        Upload Image
+                      </Button>
                     </div>
                   </div>
+                </div>
               </div>
             </CardContent>
           </Card>
         </div>
 
-        {/* Ingredients Found Section */}
         <Card className="bg-white/80 dark:glass backdrop-blur-lg shadow-xl border-0 dark:border dark:border-white/10 mb-12">
           <CardContent className="p-8">
             <div className="flex items-center justify-between mb-6">
@@ -2645,9 +2613,19 @@ function Homepage({ onNavigate, auth }: { onNavigate?: (page: string) => void; a
                     <button
                       className="ml-1 px-2 py-0.5 text-xs rounded bg-red-100 text-red-700 hover:bg-red-200 transition"
                       title="Remove ingredient"
-                      onClick={() => {
-                        const newIngredients = detectedIngredients.filter((ing) => ing !== ingredient);
-                        setDetectedIngredients(newIngredients);
+                      onClick={async () => {
+                        if (!auth.user?.uid) {
+                          console.error('User not authenticated');
+                          return;
+                        }
+                        try {
+                          const newIngredients = detectedIngredients.filter((ing) => ing !== ingredient);
+                          setDetectedIngredients(newIngredients);
+                          await updateInventory(auth.user.uid, newIngredients);
+                          console.log(`✅ Removed ingredient: ${ingredient}`);
+                        } catch (error) {
+                          console.error(`❌ Error removing ingredient ${ingredient}:`, error);
+                        }
                       }}
                     >
                       ✕
@@ -2664,26 +2642,24 @@ function Homepage({ onNavigate, auth }: { onNavigate?: (page: string) => void; a
                         await addManualIngredient(auth.user.uid, ingredientName);
                         const newIngredients = [...detectedIngredients, ingredientName];
                         setDetectedIngredients(newIngredients);
-
-                        // Update inventory and generate new recipes
-                        await updateInventory(auth.user.uid, [ingredientName]);
-                        const generatedRecipesLocal = generateRecipes(newIngredients);
-                        const recipesForSave = generatedRecipesLocal.map(recipe => ({
+                        await updateInventory(auth.user.uid, newIngredients);
+                        const generatedRecipesLocal = generateRecipes(newIngredients).map((recipe, index) => ({
                           ...recipe,
-                          id: '',
-                          createdAt: new Date()
+                          id: recipe.id || `recipe-${index}`,
+                          createdAt: new Date(),
                         }));
-                        await saveGeneratedRecipes(auth.user.uid, recipesForSave);
-
-                        // Reload recipes
+                        await saveGeneratedRecipes(auth.user.uid, generatedRecipesLocal);
                         const updatedRecipesResult = await getUserRecipes(auth.user.uid);
                         if (!updatedRecipesResult.error) {
-                          setGeneratedRecipes(updatedRecipesResult.recipes);
-                          if (updatedRecipesResult.recipes.length > 0) {
-                            setSelectedRecipeId(updatedRecipesResult.recipes[0].id);
+                          const recipes = updatedRecipesResult.recipes.map((recipe, index) => ({
+                            ...recipe,
+                            id: recipe.id || `recipe-${index}`,
+                          }));
+                          setGeneratedRecipes(recipes);
+                          if (recipes.length > 0) {
+                            setSelectedRecipeId(recipes[0].id);
                           }
                         }
-
                         console.log('✅ Manual ingredient added:', ingredientName);
                       } catch (error) {
                         console.error('❌ Failed to add ingredient:', error);
@@ -2709,27 +2685,34 @@ function Homepage({ onNavigate, auth }: { onNavigate?: (page: string) => void; a
                 onClick={async () => {
                   setIsLoading(true);
                   try {
-                    // Always fetch latest ingredients from Firebase (Google Vision output)
-                    let ingredientNames: string[] = [];
-                    if (auth.user?.uid) {
-                      const ingredientsResult = await getUserIngredients(auth.user.uid);
-                      if (!ingredientsResult.error && ingredientsResult.ingredients.length > 0) {
-                        ingredientNames = ingredientsResult.ingredients.map(ing => ing.name);
-                      }
-                    }
-                    // Always add oil, salt, pepper
                     const baseIngredients = ['oil', 'salt', 'pepper'];
-                    const allIngredients = Array.from(new Set([...ingredientNames, ...baseIngredients]));
-                    if (allIngredients.length === 0) return;
-                    // Use env utility for API key
+                    const allIngredients = Array.from(new Set([...detectedIngredients, ...baseIngredients]));
+                    if (allIngredients.length === 0) {
+                      console.warn('No ingredients available to generate recipes');
+                      return;
+                    }
                     const { getEnvVar } = await import('./lib/env');
                     const apiKey = getEnvVar('VITE_OPENAI_API_KEY', '');
-                    // If no API key use a lower threshold for local generation so we return more results
-                    const recipes = await generateRecipesSmart(allIngredients, apiKey, 8, apiKey ? 30 : 10);
+                    const recipeResult = await generateRecipesSmart(allIngredients, apiKey, 8, apiKey ? 30 : 10);
+                    console.log('generateRecipesSmart result:', recipeResult);
+                    const recipes = Array.isArray(recipeResult)
+                      ? recipeResult.map((recipe, index) => ({
+                          ...recipe,
+                          id: recipe.id || `recipe-${index}`,
+                        }))
+                      : [];
+                    if (!Array.isArray(recipeResult)) {
+                      console.error('generateRecipesSmart did not return an array:', recipeResult);
+                    }
                     setGeneratedRecipes(recipes);
                     setCurrentRecipeIndex(0);
                     if (recipes.length > 0) {
-                      setSelectedRecipeId('0');
+                      setSelectedRecipeId(recipes[0].id);
+                    } else {
+                      console.warn('No recipes generated');
+                    }
+                    if (auth.user?.uid) {
+                      await saveGeneratedRecipes(auth.user.uid, recipes);
                     }
                   } catch (error) {
                     console.error('Error generating recipes:', error);
@@ -2745,7 +2728,6 @@ function Homepage({ onNavigate, auth }: { onNavigate?: (page: string) => void; a
           </CardContent>
         </Card>
 
-        {/* Recipes Generated Section */}
         <div className="mb-8">
           <div className="flex flex-col items-center mb-8">
             <h2 className="text-4xl font-bold text-center mb-4">
@@ -2767,15 +2749,12 @@ function Homepage({ onNavigate, auth }: { onNavigate?: (page: string) => void; a
             <p className="text-gray-500 text-center py-8">No recipes generated yet. Add ingredients to see suggestions!</p>
           ) : (
             <div className="grid lg:grid-cols-4 gap-4 lg:gap-8">
-              {/* Left side - Recipe Selection with Navigation */}
               <div className="lg:col-span-1 order-2 lg:order-1">
                 <div className="mb-6">
                   <div className="flex flex-col items-center space-y-4 mb-6">
                     <h3 className="text-xl font-bold text-gray-900 dark:text-gray-100 text-center">
                       Generated Recipes
                     </h3>
-
-                    {/* Navigation Controls */}
                     <div className="flex items-center space-x-4">
                       <span className="text-sm text-gray-500">
                         {Math.floor(currentRecipeIndex / recipesPerPage) + 1} of {totalPages}
@@ -2802,8 +2781,6 @@ function Homepage({ onNavigate, auth }: { onNavigate?: (page: string) => void; a
                       </div>
                     </div>
                   </div>
-
-                  {/* Recipe Cards - Vertical Stack */}
                   <div className="space-y-4">
                     {currentPageRecipes.map((recipe, index) => (
                       <motion.div
@@ -2860,8 +2837,6 @@ function Homepage({ onNavigate, auth }: { onNavigate?: (page: string) => void; a
                       </motion.div>
                     ))}
                   </div>
-
-                  {/* Progress Indicators */}
                   <div className="flex justify-center mt-6 space-x-2">
                     {Array.from({ length: totalPages }).map((_, index) => (
                       <div
@@ -2877,9 +2852,8 @@ function Homepage({ onNavigate, auth }: { onNavigate?: (page: string) => void; a
                 </div>
               </div>
 
-              {/* Right side - Main Recipe Display */}
               <div className="lg:col-span-3 order-1 lg:order-2">
-                {selectedRecipe && (
+                {selectedRecipe ? (
                   <motion.div
                     key={selectedRecipe.id}
                     initial={{ opacity: 0, x: 20 }}
@@ -2927,7 +2901,6 @@ function Homepage({ onNavigate, auth }: { onNavigate?: (page: string) => void; a
                               </div>
                             </motion.div>
                           </div>
-
                           <div className="space-y-6">
                             <motion.div
                               initial={{ y: 20, opacity: 0 }}
@@ -2939,7 +2912,7 @@ function Homepage({ onNavigate, auth }: { onNavigate?: (page: string) => void; a
                                 Ingredients:
                               </h4>
                               <ul className="text-sm space-y-1 text-gray-700">
-                                {selectedRecipe.ingredients.map((ingredient: string, index: number) => (
+                                {selectedRecipe.ingredients?.map((ingredient: string, index: number) => (
                                   <motion.li
                                     key={index}
                                     className="flex items-start"
@@ -2950,10 +2923,11 @@ function Homepage({ onNavigate, auth }: { onNavigate?: (page: string) => void; a
                                     <span className="text-emerald-500 mr-2">•</span>
                                     <span>{ingredient}</span>
                                   </motion.li>
-                                ))}
+                                )) || (
+                                  <li className="text-gray-500">No ingredients available</li>
+                                )}
                               </ul>
                             </motion.div>
-
                             <motion.div
                               initial={{ y: 20, opacity: 0 }}
                               animate={{ y: 0, opacity: 1 }}
@@ -2964,7 +2938,7 @@ function Homepage({ onNavigate, auth }: { onNavigate?: (page: string) => void; a
                                 Instructions:
                               </h4>
                               <ol className="text-sm space-y-2 text-gray-700">
-                                {selectedRecipe.instructions.map((instruction: { title: string; detail: string }, index: number) => (
+                                {selectedRecipe.instructions?.map((instruction: { title: string; detail: string }, index: number) => (
                                   <motion.li
                                     key={index}
                                     className="space-y-1"
@@ -2982,7 +2956,9 @@ function Homepage({ onNavigate, auth }: { onNavigate?: (page: string) => void; a
                                       </div>
                                     </div>
                                   </motion.li>
-                                ))}
+                                )) || (
+                                  <li className="text-gray-500">No instructions available</li>
+                                )}
                               </ol>
                             </motion.div>
                           </div>
@@ -2990,6 +2966,8 @@ function Homepage({ onNavigate, auth }: { onNavigate?: (page: string) => void; a
                       </CardContent>
                     </Card>
                   </motion.div>
+                ) : (
+                  <p className="text-gray-500 text-center py-8">Select a recipe to view details</p>
                 )}
               </div>
             </div>
