@@ -1,95 +1,3 @@
-/*
- * FridgeToFork - AI-Powered Recipe Suggestion App
- *
- * 🚀 QUICK START SETUP GUIDE:
- * ===========================
- *
- * 1️⃣ ENVIRONMENT SETUP:
- * =====================
- * - Copy .env file to .env.local
- * - Add your API keys to .env.local (see .env for all required variables)
- * - The app will work with demo data until real API keys are added
- *
- * 2️⃣ FIREBASE SETUP:
- * ==================
- * Required for: Authentication, Database, Storage, User Management
- *
- * Steps:
- * □ Create Firebase project at https://console.firebase.google.com
- * □ Enable Authentication → Sign-in methods → Email/Password + Google
- * □ Enable Firestore Database
- * □ Enable Storage → Create default bucket
- * □ Add these config values to .env.local:
- *   - VITE_FIREBASE_API_KEY
- *   - VITE_FIREBASE_AUTH_DOMAIN
- *   - VITE_FIREBASE_PROJECT_ID
- *   - VITE_FIREBASE_STORAGE_BUCKET
- *   - VITE_FIREBASE_MESSAGING_SENDER_ID
- *   - VITE_FIREBASE_APP_ID
- *
- * 3️⃣ GOOGLE VISION API:
- * =====================
- * Required for: Ingredient detection from fridge photos
- *
- * Steps:
- * □ Go to https://console.cloud.google.com
- * □ Create new project or select existing
- * □ Enable Cloud Vision API
- * □ Create API Key → Restrict to Vision API
- * □ Add VITE_GOOGLE_VISION_API_KEY to .env.local
- *
- * 4️⃣ EMAIL SERVICE (EmailJS):
- * ===========================
- * Required for: Welcome emails, spoiling alerts, recipe suggestions
- *
- * Steps:
- * □ Create account at https://www.emailjs.com
- * □ Connect email service (Gmail recommended)
- * □ Create 3 email templates:
- *   - Welcome email for new users
- *   - Spoiling ingredient alerts
- *   - Recipe suggestions
- * □ Add these values to .env.local:
- *   - VITE_EMAILJS_SERVICE_ID
- *   - VITE_EMAILJS_TEMPLATE_ID_WELCOME
- *   - VITE_EMAILJS_TEMPLATE_ID_SPOILING
- *   - VITE_EMAILJS_TEMPLATE_ID_RECIPES
- *   - VITE_EMAILJS_PUBLIC_KEY
- *
- * 🔧 CURRENT IMPLEMENTATION STATUS:
- * =================================
- * ✅ Firebase Auth & Database - Fully integrated (lib/firebase.ts)
- * ✅ Google Vision API - Fully integrated (lib/googleVision.ts)
- * ✅ Email Service - Fully integrated (lib/emailService.ts)
- * ✅ Recipe Generation - Local algorithm implemented (lib/recipeGenerator.ts)
- * ✅ Environment Variables - Safe handling system (lib/env.ts)
- *
- * 📱 FEATURES THAT WORK OUT OF THE BOX:
- * ====================================
- * - User authentication (email/password + Google OAuth)
- * - Ingredient detection from photos
- * - Recipe generation based on available ingredients
- * - Inventory management with waste tracking
- * - Email notifications for spoiling ingredients
- * - Weekly meal planning
- * - Dark/light mode toggle
- * - Responsive design for all devices
- * - SDG 12 sustainability features
- *
- * 🎯 DEMO MODE:
- * ============
- * - Set VITE_DEMO_MODE=true in .env.local to test without real APIs
- * - Use demo credentials: ken@example.com / password123
- * - All features work with mock data for testing
- *
- * 💡 DEPLOYMENT NOTES:
- * ===================
- * - Environment variables are automatically loaded
- * - Error handling gracefully falls back to demo mode if APIs fail
- * - Security rules templates provided in .env file
- * - Ready for deployment to Vercel, Netlify, or any static host
- */
-
 import React, { useState, useEffect, useRef } from 'react';
 import { Upload, Camera, ChefHat, Sparkles, Apple, Carrot, Fish, Clock, Users, ArrowLeft, Refrigerator, X, Eye, EyeOff, Trash2, RotateCcw, Recycle, Package, Calendar, Plus, Star, Heart, Award, Github, Linkedin, Mail, Settings, Bell, BellOff, Moon, Sun, KeyRound, ChevronDown } from 'lucide-react';
 import { motion } from 'motion/react';
@@ -132,7 +40,14 @@ import {
   Ingredient
 } from './lib/firebase';
 import { analyzeImageWithGoogleVision } from './lib/googleVision';
-import { generateRecipes, generateRecipesByDiet, getRecipesForMealPlan } from './lib/recipeGenerator';
+import { generateRecipes, generateRecipesByDiet, getRecipesForMealPlan, generateRecipesSmart } from './lib/recipeGenerator';
+// Vite env type fix for TypeScript
+interface ImportMeta {
+  env: {
+    VITE_OPENAI_API_KEY?: string;
+    [key: string]: any;
+  };
+}
 import { sendSpoilingReminder, sendWelcomeEmail, sendRecipeSuggestions } from './lib/emailService';
 
 // Authentication context
@@ -2720,12 +2635,23 @@ function Homepage({ onNavigate, auth }: { onNavigate?: (page: string) => void; a
                     initial={{ opacity: 0, scale: 0.8 }}
                     animate={{ opacity: 1, scale: 1 }}
                     transition={{ delay: index * 0.1 }}
+                    className="flex items-center gap-1"
                   >
                     <Badge
                       className="bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 px-4 py-2 text-sm hover:bg-emerald-200 dark:hover:bg-emerald-500/30 transition-colors cursor-pointer transform hover:scale-105 border border-emerald-200 dark:border-emerald-500/30"
                     >
                       {ingredient}
                     </Badge>
+                    <button
+                      className="ml-1 px-2 py-0.5 text-xs rounded bg-red-100 text-red-700 hover:bg-red-200 transition"
+                      title="Remove ingredient"
+                      onClick={() => {
+                        const newIngredients = detectedIngredients.filter((ing) => ing !== ingredient);
+                        setDetectedIngredients(newIngredients);
+                      }}
+                    >
+                      ✕
+                    </button>
                   </motion.div>
                 ))}
                 <Badge
@@ -2769,13 +2695,53 @@ function Homepage({ onNavigate, auth }: { onNavigate?: (page: string) => void; a
                 </Badge>
               </div>
             )}
-            <Button
-              variant="outline"
-              className="border-emerald-200 dark:border-emerald-500/30 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-500/10"
-              onClick={() => onNavigate?.('inventory')}
-            >
-              View Full Inventory
-            </Button>
+            <div className="flex gap-4">
+              <Button
+                variant="outline"
+                className="border-emerald-200 dark:border-emerald-500/30 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-500/10"
+                onClick={() => onNavigate?.('inventory')}
+              >
+                View Full Inventory
+              </Button>
+              <Button
+                variant="outline"
+                className="border-emerald-200 dark:border-emerald-500/30 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-500/10"
+                onClick={async () => {
+                  setIsLoading(true);
+                  try {
+                    // Always fetch latest ingredients from Firebase (Google Vision output)
+                    let ingredientNames: string[] = [];
+                    if (auth.user?.uid) {
+                      const ingredientsResult = await getUserIngredients(auth.user.uid);
+                      if (!ingredientsResult.error && ingredientsResult.ingredients.length > 0) {
+                        ingredientNames = ingredientsResult.ingredients.map(ing => ing.name);
+                      }
+                    }
+                    // Always add oil, salt, pepper
+                    const baseIngredients = ['oil', 'salt', 'pepper'];
+                    const allIngredients = Array.from(new Set([...ingredientNames, ...baseIngredients]));
+                    if (allIngredients.length === 0) return;
+                    // Use env utility for API key
+                    const { getEnvVar } = await import('./lib/env');
+                    const apiKey = getEnvVar('VITE_OPENAI_API_KEY', '');
+                    // If no API key use a lower threshold for local generation so we return more results
+                    const recipes = await generateRecipesSmart(allIngredients, apiKey, 8, apiKey ? 30 : 10);
+                    setGeneratedRecipes(recipes);
+                    setCurrentRecipeIndex(0);
+                    if (recipes.length > 0) {
+                      setSelectedRecipeId('0');
+                    }
+                  } catch (error) {
+                    console.error('Error generating recipes:', error);
+                  } finally {
+                    setIsLoading(false);
+                  }
+                }}
+                disabled={detectedIngredients.length === 0 && !auth.user}
+              >
+                Generate Recipe
+              </Button>
+            </div>
           </CardContent>
         </Card>
 
@@ -2792,7 +2758,12 @@ function Homepage({ onNavigate, auth }: { onNavigate?: (page: string) => void; a
             </p>
           </div>
 
-          {generatedRecipes.length === 0 ? (
+          {isLoading ? (
+            <div className="flex flex-col items-center justify-center py-12">
+              <div className="animate-spin rounded-full h-12 w-12 border-t-4 border-b-4 border-emerald-500 mb-4"></div>
+              <span className="text-emerald-700 font-semibold">Generating recipes...</span>
+            </div>
+          ) : generatedRecipes.length === 0 ? (
             <p className="text-gray-500 text-center py-8">No recipes generated yet. Add ingredients to see suggestions!</p>
           ) : (
             <div className="grid lg:grid-cols-4 gap-4 lg:gap-8">

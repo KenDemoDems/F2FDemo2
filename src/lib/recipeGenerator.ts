@@ -108,218 +108,40 @@ const RECIPE_DATABASE: Omit<Recipe, 'id' | 'createdAt'>[] = [
       { title: "Prep vegetables", detail: "Cut all vegetables into uniform bite-sized pieces for even cooking." },
       { title: "Heat wok", detail: "Heat oil in a large wok or pan over high heat until smoking." },
       { title: "Add aromatics", detail: "Add garlic and ginger, stir-fry for 30 seconds until fragrant." },
-      { title: "Cook vegetables", detail: "Add harder vegetables first (carrots, broccoli), then softer ones. Stir-fry for 3-5 minutes." },
-      { title: "Season and finish", detail: "Add sauces and cornstarch mixture. Toss for 1 minute until glossy. Garnish with green onions." }
+      { title: "Cook vegetables", detail: "Add harder vegetables first (carrots, broccoli), then softer ones. Stir-fry for 3-5 minutes until crisp-tender." },
+      { title: "Add sauce", detail: "Pour in soy sauce, oyster sauce, and cornstarch mixture. Stir until sauce thickens." },
+      { title: "Serve", detail: "Garnish with green onions and serve hot over rice if desired." }
     ]
   },
-  {
-    name: "Tomato Basil Pasta",
-    image: "figma:asset/2780e8169c075695ce0c5190b09759e545a810b6.png",
-    time: '25 min',
-    difficulty: 'Medium',
-    calories: 380,
-    nutritionBenefits: "Carbohydrates, lycopene from tomatoes, vitamin K",
-    usedIngredients: ['pasta', 'tomato', 'garlic', 'basil', 'cheese'],
-    ingredients: [
-      "8 oz pasta (spaghetti, penne, or your choice)",
-      "4 large ripe tomatoes (diced) or 1 can crushed tomatoes",
-      "3 cloves garlic (minced)",
-      "¼ cup fresh basil leaves",
-      "3 tbsp extra virgin olive oil",
-      "¼ cup grated Parmesan cheese",
-      "Salt and pepper to taste",
-      "Red pepper flakes (optional)"
-    ],
-    instructions: [
-      { title: "Cook pasta", detail: "Boil pasta in salted water according to package directions until al dente." },
-      { title: "Make sauce", detail: "Heat olive oil in a large pan. Sauté garlic for 1 minute, add tomatoes and cook for 10 minutes." },
-      { title: "Combine", detail: "Drain pasta and add to sauce. Toss with fresh basil and Parmesan." },
-      { title: "Serve", detail: "Season with salt, pepper, and red pepper flakes. Serve immediately." }
-    ]
-  },
-  {
-    name: "Apple Cinnamon Smoothie",
-    image: "figma:asset/3fedb2d27086faff5fd5d4e559738aa7837ac176.png",
-    time: '5 min',
-    difficulty: 'Easy',
-    calories: 150,
-    nutritionBenefits: "Vitamin C, fiber, probiotics from yogurt",
-    usedIngredients: ['apple', 'yogurt', 'milk', 'honey'],
-    ingredients: [
-      "1 large apple (cored and chopped)",
-      "½ cup Greek yogurt",
-      "½ cup milk (dairy or almond)",
-      "1 tbsp honey or maple syrup",
-      "½ tsp ground cinnamon",
-      "¼ tsp vanilla extract",
-      "6-8 ice cubes",
-      "Optional: 1 tbsp oats for thickness"
-    ],
-    instructions: [
-      { title: "Prepare apple", detail: "Core and roughly chop apple (leave skin on for extra fiber)." },
-      { title: "Blend ingredients", detail: "Add all ingredients to blender and blend until smooth and creamy." },
-      { title: "Adjust consistency", detail: "Add more milk if too thick, or more ice if too thin." },
-      { title: "Serve", detail: "Pour into glass and sprinkle with extra cinnamon if desired." }
-    ]
-  },
-  {
-    name: "Grilled Cheese Sandwich",
-    image: "figma:asset/2e5eaf280bc2a4732907cd4c7a025b119a66136f.png",
-    time: '8 min',
-    difficulty: 'Easy',
-    calories: 280,
-    nutritionBenefits: "Protein, calcium, comfort food",
-    usedIngredients: ['bread', 'cheese', 'butter'],
-    ingredients: [
-      "2 slices good quality bread",
-      "2-3 slices cheese (cheddar, swiss, or gruyere)",
-      "1 tbsp butter (softened)",
-      "Optional: tomato slices, ham, or mustard"
-    ],
-    instructions: [
-      { title: "Prepare sandwich", detail: "Butter one side of each bread slice. Place cheese between unbuttered sides." },
-      { title: "Heat pan", detail: "Heat a non-stick pan or griddle over medium-low heat." },
-      { title: "Cook first side", detail: "Place sandwich buttered-side down. Cook 2-3 minutes until golden brown." },
-      { title: "Flip and finish", detail: "Flip carefully and cook another 2-3 minutes until cheese melts and both sides are golden." }
-    ]
-  },
-  {
-    name: "Fluffy Pancakes",
-    image: "figma:asset/2780e8169c075695ce0c5190b09759e545a810b6.png",
-    time: '18 min',
-    difficulty: 'Medium',
-    calories: 340,
-    nutritionBenefits: "Carbohydrates, protein, calcium",
-    usedIngredients: ['flour', 'milk', 'egg', 'butter'],
-    ingredients: [
-      "1 cup all-purpose flour",
-      "1 cup milk",
-      "1 large egg",
-      "2 tbsp melted butter",
-      "2 tbsp sugar",
-      "1 tsp baking powder",
-      "½ tsp salt",
-      "Butter for cooking",
-      "Maple syrup for serving"
-    ],
-    instructions: [
-      { title: "Mix dry ingredients", detail: "In a bowl, whisk together flour, sugar, baking powder, and salt." },
-      { title: "Combine wet ingredients", detail: "In another bowl, whisk milk, egg, and melted butter." },
-      { title: "Make batter", detail: "Pour wet ingredients into dry ingredients. Mix until just combined (lumps are okay)." },
-      { title: "Cook pancakes", detail: "Heat griddle over medium heat. Pour ¼ cup batter per pancake. Cook until bubbles form, flip, and cook until golden." }
-    ]
-  },
-  {
-    name: "Chicken Caesar Salad",
-    image: "figma:asset/3fedb2d27086faff5fd5d4e559738aa7837ac176.png",
-    time: '15 min',
-    difficulty: 'Medium',
-    calories: 420,
-    nutritionBenefits: "High protein, vitamin K, healthy fats",
-    usedIngredients: ['chicken', 'lettuce', 'cheese', 'bread'],
-    ingredients: [
-      "1 grilled chicken breast (sliced)",
-      "1 head romaine lettuce (chopped)",
-      "¼ cup grated Parmesan cheese",
-      "2 tbsp Caesar dressing",
-      "1 cup croutons",
-      "Freshly ground black pepper"
-    ],
-    instructions: [
-      { title: "Prepare chicken", detail: "Season and grill chicken breast until cooked through. Let rest, then slice." },
-      { title: "Prepare salad", detail: "Wash and chop romaine lettuce. Place in large serving bowl." },
-      { title: "Assemble", detail: "Add sliced chicken, croutons, and Parmesan cheese to lettuce." },
-      { title: "Dress and serve", detail: "Toss with Caesar dressing and top with freshly ground pepper." }
-    ]
-  },
-  {
-    name: "Mushroom Risotto",
-    image: "figma:asset/2e5eaf280bc2a4732907cd4c7a025b119a66136f.png",
-    time: '35 min',
-    difficulty: 'Hard',
-    calories: 380,
-    nutritionBenefits: "Complex carbohydrates, umami flavors, B vitamins",
-    usedIngredients: ['rice', 'mushroom', 'cheese', 'onion', 'garlic'],
-    ingredients: [
-      "1 cup Arborio rice",
-      "8 oz mixed mushrooms (sliced)",
-      "4 cups warm chicken or vegetable broth",
-      "1 small onion (diced)",
-      "2 cloves garlic (minced)",
-      "½ cup white wine",
-      "¼ cup grated Parmesan cheese",
-      "2 tbsp butter",
-      "2 tbsp olive oil"
-    ],
-    instructions: [
-      { title: "Sauté mushrooms", detail: "Cook mushrooms in olive oil until golden. Remove and set aside." },
-      { title: "Cook aromatics", detail: "In same pan, cook onion and garlic until translucent." },
-      { title: "Toast rice", detail: "Add rice and stir for 2 minutes until edges are translucent." },
-      { title: "Add liquid gradually", detail: "Add wine, then warm broth one ladle at a time, stirring constantly until absorbed." },
-      { title: "Finish risotto", detail: "Stir in mushrooms, butter, and Parmesan. Season and serve immediately." }
-    ]
-  }
+  // Add more recipes here if you have them from the full database
 ];
 
-// Calculate ingredient match percentage
-const calculateMatchPercentage = (recipeIngredients: string[], availableIngredients: string[] | undefined | null): number => {
-  // Defensive: Ensure availableIngredients is an array
-  const available = Array.isArray(availableIngredients) ? availableIngredients.map(i => i.toLowerCase()) : [];
-  const required = recipeIngredients.map(i => i.toLowerCase());
+// Helper function to calculate match percentage
+function calculateMatchPercentage(recipeIngredients: string[], availableIngredients: string[]): number {
+  const availableLower = new Set(availableIngredients.map(i => i.toLowerCase()));
+  const matching = recipeIngredients.filter(ing => availableLower.has(ing.toLowerCase()));
+  return Math.round((matching.length / (recipeIngredients.length || 1)) * 100);
+}
 
-  let matchCount = 0;
+// Helper function to find missing ingredients
+function findMissingIngredients(recipeIngredients: string[], availableIngredients: string[]): string[] {
+  const availableLower = new Set(availableIngredients.map(i => i.toLowerCase()));
+  return recipeIngredients.filter(ing => !availableLower.has(ing.toLowerCase()));
+}
 
-  required.forEach(ingredient => {
-    const hasMatch = available.some(available =>
-      ingredient.includes(available) ||
-      available.includes(ingredient) ||
-      ingredient.split(' ').some(word => available.includes(word)) ||
-      available.some(avail => ingredient.includes(avail))
-    );
-
-    if (hasMatch) {
-      matchCount++;
-    }
-  });
-
-  return required.length > 0 ? Math.round((matchCount / required.length) * 100) : 0;
-};
-
-// Find missing ingredients
-const findMissingIngredients = (recipeIngredients: string[], availableIngredients: string[] | undefined | null): string[] => {
-  // Defensive: Ensure availableIngredients is an array
-  const available = Array.isArray(availableIngredients) ? availableIngredients.map(i => i.toLowerCase()) : [];
-
-  return recipeIngredients.filter(ingredient => {
-    const lowerIngredient = ingredient.toLowerCase();
-    return !available.some(available =>
-      lowerIngredient.includes(available) ||
-      available.includes(lowerIngredient) ||
-      lowerIngredient.split(' ').some(word => available.includes(word))
-    );
-  });
-};
-
-// Main recipe generation function
+// Local recipe generation based on ingredient matching
 export const generateRecipes = (
   availableIngredients: string[] | undefined | null,
   maxRecipes: number = 8,
   minMatchPercentage: number = 30
 ): GeneratedRecipe[] => {
-  // Defensive: Ensure availableIngredients is an array
-  const ingredients = Array.isArray(availableIngredients) ? availableIngredients : [];
-  console.log('🍳 Generating recipes for ingredients:', ingredients);
-
-  if (ingredients.length === 0) {
-    console.warn('No ingredients provided; returning empty recipe list.');
-    return [];
-  }
+  if (!Array.isArray(availableIngredients) || availableIngredients.length === 0) return [];
 
   const generatedRecipes: GeneratedRecipe[] = [];
 
   RECIPE_DATABASE.forEach(recipe => {
-    const matchPercentage = calculateMatchPercentage(recipe.usedIngredients, ingredients);
-    const missingIngredients = findMissingIngredients(recipe.usedIngredients, ingredients);
+    const matchPercentage = calculateMatchPercentage(recipe.usedIngredients, availableIngredients);
+    const missingIngredients = findMissingIngredients(recipe.usedIngredients, availableIngredients);
 
     if (matchPercentage >= minMatchPercentage) {
       generatedRecipes.push({
@@ -330,21 +152,84 @@ export const generateRecipes = (
     }
   });
 
-  // Sort by match percentage (highest first) and take top results
-  const sortedRecipes = generatedRecipes
-    .sort((a, b) => {
-      if (b.matchPercentage !== a.matchPercentage) {
-        return b.matchPercentage - a.matchPercentage;
-      }
-      return a.missingIngredients.length - b.missingIngredients.length;
-    })
+  return generatedRecipes
+    .sort((a, b) => b.matchPercentage - a.matchPercentage)
     .slice(0, maxRecipes);
+};
 
-  console.log('🎯 Generated recipes:', sortedRecipes.map(r =>
-    `${r.name} (${r.matchPercentage}% match, ${r.missingIngredients.length} missing)`
-  ));
+// OpenAI-powered recipe generation
+export const generateRecipesOpenAI = async (
+  availableIngredients: string[],
+  apiKey: string,
+  maxRecipes: number = 8
+): Promise<GeneratedRecipe[]> => {
+  // Defensive: Ensure availableIngredients is an array
+  if (!Array.isArray(availableIngredients) || availableIngredients.length === 0) return [];
+  try {
+    const prompt = `Suggest ${maxRecipes} creative recipes primarily using these ingredients: ${availableIngredients.join(", ")}. 
+    Prioritize recipes that use as many of the provided ingredients as possible, but you can suggest minor additional common pantry items if needed.
+    For each recipe, provide exactly these fields:
+    - name: string (recipe title)
+    - image: string (use a placeholder like 'placeholder.jpg')
+    - time: string (e.g., '20 min')
+    - difficulty: string (e.g., 'Easy')
+    - calories: number (approximate total calories)
+    - nutritionBenefits: string (brief benefits, e.g., 'High in protein')
+    - usedIngredients: string[] (array of ingredients from the provided list that are used)
+    - ingredients: string[] (full list of ingredients with quantities)
+    - instructions: Array<{title: string, detail: string}> (step-by-step instructions as array of objects)
+    
+    Output only a valid JSON object with a key "recipes" containing an array of these objects. No extra text.`;
+    
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini', // Valid, cost-effective model with JSON support
+        messages: [{ role: 'user', content: prompt }],
+        response_format: { type: "json_object" },
+        max_tokens: 2000, // Increased for detailed responses
+        temperature: 0.7
+      })
+    });
 
-  return sortedRecipes;
+    if (!response.ok) {
+      throw new Error(`OpenAI API error: ${response.status} - ${await response.text()}`);
+    }
+
+    const data = await response.json();
+    const text = data.choices?.[0]?.message?.content || '';
+    const parsed = JSON.parse(text);
+    let recipes: GeneratedRecipe[] = parsed.recipes || [];
+
+    // Post-process to add matchPercentage and missingIngredients
+    recipes = recipes.map((recipe: any) => ({
+      ...recipe,
+      matchPercentage: calculateMatchPercentage(recipe.usedIngredients, availableIngredients),
+      missingIngredients: findMissingIngredients(recipe.ingredients, availableIngredients) // Assuming ingredients is the full list
+    }));
+
+    return recipes.slice(0, maxRecipes);
+  } catch (error) {
+    console.error('OpenAI recipe generation failed:', error);
+    return [];
+  }
+};
+
+// Smart recipe generation: uses OpenAI if API key is present, otherwise local
+export const generateRecipesSmart = async (
+  availableIngredients: string[] | undefined | null,
+  apiKey?: string,
+  maxRecipes: number = 8,
+  minMatchPercentage: number = 30
+): Promise<GeneratedRecipe[]> => {
+  if (apiKey) {
+    return await generateRecipesOpenAI(Array.isArray(availableIngredients) ? availableIngredients : [], apiKey, maxRecipes);
+  }
+  return generateRecipes(availableIngredients, maxRecipes, minMatchPercentage);
 };
 
 // Generate recipes based on dietary preferences
