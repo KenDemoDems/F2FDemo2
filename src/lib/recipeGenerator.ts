@@ -214,22 +214,17 @@ export const generateRecipes = (
     .slice(0, maxRecipes);
 };
 
-// Local recipe generation with Pexels images (optimized with priority loading)
+// Local recipe generation with Pexels images
 export const generateRecipesWithImages = async (
   availableIngredients: string[] | undefined | null,
   maxRecipes: number = 8,
-  minMatchPercentage: number = 30,
-  priorityCount: number = 3 // Only fetch first N images immediately
+  minMatchPercentage: number = 30
 ): Promise<GeneratedRecipe[]> => {
   const recipes = generateRecipes(availableIngredients, maxRecipes, minMatchPercentage);
-  
-  // Split recipes into priority (first 3) and lazy load (rest)
-  const priorityRecipes = recipes.slice(0, priorityCount);
-  const lazyRecipes = recipes.slice(priorityCount);
-  
-  // Fetch images for priority recipes immediately
-  const recipesWithPriorityImages = await Promise.all(
-    priorityRecipes.map(async (recipe) => {
+
+  // Fetch images from Pexels for each recipe
+  const recipesWithImages = await Promise.all(
+    recipes.map(async (recipe) => {
       try {
         // Skip if recipe already has a valid image URL (not a figma asset)
         if (recipe.image && !recipe.image.startsWith('figma:')) {
@@ -247,36 +242,7 @@ export const generateRecipesWithImages = async (
     })
   );
 
-  // Return priority recipes immediately with placeholders for lazy recipes
-  const recipesWithPlaceholders = [
-    ...recipesWithPriorityImages,
-    ...lazyRecipes.map(recipe => ({
-      ...recipe,
-      image: recipe.image && !recipe.image.startsWith('figma:') ? recipe.image : 'placeholder',
-      _imageLoading: true
-    }))
-  ];
-
-  // Lazy load remaining images in the background (non-blocking)
-  setTimeout(async () => {
-    const lazyImages = await Promise.all(
-      lazyRecipes.map(async (recipe) => {
-        try {
-          if (recipe.image && !recipe.image.startsWith('figma:')) {
-            return recipe.image;
-          }
-          return await fetchFoodImage(cleanRecipeNameForSearch(recipe.name), 'landscape');
-        } catch (error) {
-          console.error(`Failed to fetch lazy image for ${recipe.name}:`, error);
-          return recipe.image;
-        }
-      })
-    );
-    // Images are cached, so next re-render will use them
-    console.log(`✅ Lazy loaded ${lazyImages.length} additional recipe images`);
-  }, 100);
-
-  return recipesWithPlaceholders;
+  return recipesWithImages;
 };
 
 // OpenAI-powered recipe generation
@@ -288,9 +254,38 @@ export const generateRecipesOpenAI = async (
   // Defensive: Ensure availableIngredients is an array
   if (!Array.isArray(availableIngredients) || availableIngredients.length === 0) return [];
   try {
-    // Shortened, more concise prompt for faster response
-    const prompt = `Generate ${maxRecipes} recipes using: ${availableIngredients.join(", ")}. Return JSON only:
-{"recipes":[{"name":"Recipe Name","image":"placeholder.jpg","time":"20 min","difficulty":"Easy","calories":300,"nutritionBenefits":"Brief benefit","usedIngredients":["ing1","ing2"],"ingredients":["1 cup ing1"],"instructions":[{"title":"Step 1","detail":"Instructions"}]}]}`;
+    const prompt = `Generate exactly ${maxRecipes} creative and diverse recipes using primarily these ingredients: ${availableIngredients.join(", ")}.
+    Prioritize recipes that maximize the use of provided ingredients, but you may include minor additional pantry items (e.g., salt, pepper, oil) if necessary. Ensure recipes are distinct from each other, avoiding multiple variations of the same dish (e.g., different pasta dishes with similar ingredients).
+    Return a JSON object with a single key "recipes" containing an array of recipe objects. Each recipe must include:
+    - name: string (recipe title, unique and descriptive)
+    - image: string (use 'placeholder.jpg')
+    - time: string (e.g., '20 min')
+    - difficulty: string (e.g., 'Easy', 'Medium', 'Hard')
+    - calories: number (approximate total calories)
+    - nutritionBenefits: string (brief benefits, e.g., 'High in protein')
+    - usedIngredients: string[] (array of ingredients from the provided list that are used)
+    - ingredients: string[] (full list of ingredients with quantities)
+    - instructions: Array<{title: string, detail: string}> (step-by-step instructions)
+
+    Ensure the response is valid JSON with no additional text, comments, or markdown. Example:
+    {
+      "recipes": [
+        {
+          "name": "Sample Recipe",
+          "image": "placeholder.jpg",
+          "time": "20 min",
+          "difficulty": "Easy",
+          "calories": 300,
+          "nutritionBenefits": "High in protein",
+          "usedIngredients": ["ingredient1", "ingredient2"],
+          "ingredients": ["1 cup ingredient1", "2 tbsp ingredient2"],
+          "instructions": [
+            {"title": "Step 1", "detail": "Do something"},
+            {"title": "Step 2", "detail": "Do another thing"}
+          ]
+        }
+      ]
+    }`;
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -302,10 +297,9 @@ export const generateRecipesOpenAI = async (
         model: 'gpt-4o-mini',
         messages: [{ role: 'user', content: prompt }],
         response_format: { type: "json_object" },
-        max_tokens: 1500, // Reduced from 2000 for faster response
-        temperature: 0.8 // Slightly increased for more creativity with shorter prompt
-      }),
-      signal: AbortSignal.timeout(15000) // 15 second timeout to prevent hanging
+        max_tokens: 2000,
+        temperature: 0.7
+      })
     });
 
     if (!response.ok) {
@@ -354,14 +348,9 @@ export const generateRecipesOpenAI = async (
         id: recipe.id || `openai-recipe-${index}`
       }));
 
-    // Fetch images for first 3 recipes immediately, lazy-load rest
-    const priorityCount = 3;
-    const priorityRecipes = validRecipes.slice(0, priorityCount);
-    const lazyRecipes = validRecipes.slice(priorityCount);
-
-    // Fetch priority images immediately
-    const recipesWithPriorityImages = await Promise.all(
-      priorityRecipes.map(async (recipe) => {
+    // Fetch images from Pexels for each recipe
+    const recipesWithImages = await Promise.all(
+      validRecipes.map(async (recipe) => {
         try {
           const imageUrl = await fetchFoodImage(cleanRecipeNameForSearch(recipe.name), 'landscape');
           return {
@@ -374,26 +363,6 @@ export const generateRecipesOpenAI = async (
         }
       })
     );
-
-    // Add lazy recipes with placeholders
-    const recipesWithImages = [
-      ...recipesWithPriorityImages,
-      ...lazyRecipes.map(recipe => ({ ...recipe, _imageLoading: true }))
-    ];
-
-    // Lazy load remaining images in background
-    setTimeout(async () => {
-      await Promise.all(
-        lazyRecipes.map(async (recipe) => {
-          try {
-            await fetchFoodImage(cleanRecipeNameForSearch(recipe.name), 'landscape');
-          } catch (error) {
-            console.error(`Failed to lazy load image for ${recipe.name}:`, error);
-          }
-        })
-      );
-      console.log(`✅ Lazy loaded ${lazyRecipes.length} additional OpenAI recipe images`);
-    }, 100);
 
     // Filter similar recipes to keep at most 2 per similarity group
     const filteredRecipes = filterSimilarRecipes(recipesWithImages, 0.8, 2);
@@ -410,33 +379,20 @@ export const generateRecipesSmart = async (
   availableIngredients: string[] | undefined | null,
   apiKey?: string,
   maxRecipes: number = 8,
-  minMatchPercentage: number = 30,
-  onProgress?: (stage: string, percent: number) => void
+  minMatchPercentage: number = 30
 ): Promise<GeneratedRecipe[]> => {
-  try {
-    if (apiKey) {
-      onProgress?.('Generating recipes with AI...', 20);
-      const openAiRecipes = await generateRecipesOpenAI(
-        Array.isArray(availableIngredients) ? availableIngredients : [],
-        apiKey,
-        maxRecipes
-      );
-      if (openAiRecipes.length > 0) {
-        onProgress?.('Recipes generated!', 100);
-        return openAiRecipes;
-      }
-      console.warn('OpenAI recipe generation returned no valid recipes, falling back to local generation');
+  if (apiKey) {
+    const openAiRecipes = await generateRecipesOpenAI(
+      Array.isArray(availableIngredients) ? availableIngredients : [],
+      apiKey,
+      maxRecipes
+    );
+    if (openAiRecipes.length > 0) {
+      return openAiRecipes;
     }
-    onProgress?.('Fetching recipe images...', 50);
-    const recipes = await generateRecipesWithImages(availableIngredients, maxRecipes, minMatchPercentage);
-    onProgress?.('Complete!', 100);
-    return recipes;
-  } catch (error) {
-    console.error('Recipe generation error:', error);
-    onProgress?.('Error occurred, using fallback...', 60);
-    // Fallback to local generation without images on error
-    return generateRecipes(availableIngredients, maxRecipes, minMatchPercentage);
+    console.warn('OpenAI recipe generation returned no valid recipes, falling back to local generation');
   }
+  return generateRecipesWithImages(availableIngredients, maxRecipes, minMatchPercentage);
 };
 
 // Generate recipes based on dietary preferences

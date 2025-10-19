@@ -119,14 +119,14 @@ export interface MealPlanEntry {
 
 export interface InventoryItem {
   id: string;
-  userId: string;
   name: string;
   quantity: number;
   unit: string;
-  addedDate: Date;
-  expiryDate?: Date;
-  category: string;
-  fromDetection: boolean;
+  category?: string;
+  expiryDate?: string;
+  userId: string;
+  addedDate: string;
+  daysLeft?: number;
 }
 
 // Authentication Functions
@@ -462,33 +462,19 @@ export const updateInventory = async (userId: string, ingredients: string[]) => 
   }
 };
 
-export const getUserInventory = async (userId: string) => {
+export const getUserInventory = async (userId: string): Promise<{ inventory: InventoryItem[]; error?: string }> => {
   try {
-    if (isDemoMode) {
-      console.log("🔧 Demo mode: Returning demo inventory for", userId);
-      return { inventory: [], error: null };
-    }
-
     const q = query(
       collection(db, 'inventory'),
       where('userId', '==', userId),
-      orderBy('addedDate', 'desc')
+      orderBy('addedDate', 'asc')
     );
-
     const querySnapshot = await getDocs(q);
-    const inventory: InventoryItem[] = [];
-
-    querySnapshot.forEach((doc) => {
-      const data = doc.data();
-      inventory.push({
-        id: doc.id,
-        ...data,
-        addedDate: data.addedDate.toDate(),
-        expiryDate: data.expiryDate ? data.expiryDate.toDate() : undefined
-      } as InventoryItem);
-    });
-
-    return { inventory, error: null };
+    const inventory = querySnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data(),
+    })) as InventoryItem[];
+    return { inventory };
   } catch (error: any) {
     return { inventory: [], error: error.message };
   }
