@@ -5,7 +5,7 @@ import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../components/ui/dialog';
-import { getUserInventory, updateInventory } from '../lib/firebase';
+import { getUserInventory, addToWasteBin, removeFromWasteBin, getUserWasteBin, saveLeftoverRecipes } from '../lib/firebase';
 import { generateRecipesSmart } from '../lib/recipeGenerator';
 import { sendSpoilingReminder, sendRecipeSuggestions } from '../lib/emailService';
 import { deleteDoc, doc } from 'firebase/firestore';
@@ -29,21 +29,21 @@ interface InventoryItem {
 interface WasteItem {
   id: string;
   name: string;
-  image: string;
   daysLeft: number;
+  category?: string;
 }
 
 interface InventoryPageProps {
   auth: AuthState;
 }
 
-const categoryIcons: { [key: string]: React.ReactElement } = {
-  fruits: <Apple className="h-6 w-6 text-red-400" />,
-  vegetables: <Carrot className="h-6 w-6 text-orange-400" />,
-  proteins: <Fish className="h-6 w-6 text-blue-400" />,
-  dairy: <span className="text-lg">🧀</span>,
-  grains: <span className="text-lg">🌾</span>,
-  general: <span className="text-lg">🥕</span>,
+const categoryEmojis: { [key: string]: string } = {
+  fruits: '🍎',
+  vegetables: '🥕',
+  proteins: '🍗',
+  dairy: '🧀',
+  grains: '🌾',
+  general: '🥫',
 };
 
 function InventoryPage({ auth }: InventoryPageProps) {
@@ -56,63 +56,79 @@ function InventoryPage({ auth }: InventoryPageProps) {
   const [isGeneratingRecipes, setIsGeneratingRecipes] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [ingredientImages, setIngredientImages] = useState<Record<string, string>>({}); // Store image URLs by ingredient name
+  const [ingredientImages, setIngredientImages] = useState<Record<string, string>>({});
 
-  // Fetch inventory from Firestore
-  const fetchInventory = async () => {
-    if (!auth.user?.uid) {
-      setError('User not authenticated');
-      setLoading(false);
-      return;
-    }
+  // Fetch inventory and waste bin from Firestore
+  useEffect(() => {
+    const fetchData = async () => {
+      if (!auth.user?.uid) {
+        setError('User not authenticated');
+        setLoading(false);
+        return;
+      }
 
-    setLoading(true);
-    setError(null);
+      setLoading(true);
+      setError(null);
 
-    try {
-      const result = await getUserInventory(auth.user.uid);
-      if (result.error) {
-        if (result.error.includes('index')) {
+      try {
+        const [inventoryResult, wasteResult] = await Promise.all([
+          getUserInventory(auth.user.uid),
+          getUserWasteBin(auth.user.uid),
+        ]);
+
+        if (inventoryResult.error) {
           setError(
-            'Firestore query requires an index. Please create it in the Firebase Console and try again.'
+            inventoryResult.error.includes('index')
+              ? 'Firestore query requires an index. Please create it in the Firebase Console.'
+              : inventoryResult.error
           );
         } else {
-          setError(result.error);
+          setInventoryItems(inventoryResult.inventory as InventoryItem[]);
         }
-      } else {
-        setInventoryItems(result.inventory as InventoryItem[]);
-        // Fetch images for all ingredients
-        fetchIngredientImages(result.inventory.map((item: any) => item.name));
-      }
-    } catch (err: any) {
-      const errorMessage = err.message || 'Failed to fetch inventory';
-      if (errorMessage.includes('index')) {
+
+        if (wasteResult.error) {
+          console.error('Waste bin error:', wasteResult.error);
+          setWasteManagementItems([]);
+        } else {
+          setWasteManagementItems(wasteResult.wasteItems as WasteItem[]);
+        }
+
+        // Fetch images for all items
+        const allNames = [
+          ...new Set([
+            ...(inventoryResult.inventory?.map((item: any) => item.name) || []),
+            ...(wasteResult.wasteItems?.map((item: any) => item.name) || []),
+          ]),
+        ];
+        fetchIngredientImages(allNames);
+      } catch (err: any) {
+        const errorMessage = err.message || 'Failed to fetch data';
         setError(
-          'Firestore query requires an index. Please create it in the Firebase Console.'
+          errorMessage.includes('index')
+            ? 'Firestore query requires an index. Please create it in the Firebase Console.'
+            : errorMessage
         );
-      } else {
-        setError(errorMessage);
+        console.error('Error fetching data:', err);
+      } finally {
+        setLoading(false);
       }
-      console.error('Error fetching inventory:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
+    };
+
+    fetchData();
+  }, [auth.user?.uid]);
 
   // Fetch food-related images from Pexels API
   const fetchIngredientImages = async (ingredientNames: string[]) => {
     const { getEnvVar } = await import('../lib/env');
     const apiKey = getEnvVar('VITE_PEXELS_API_KEY', '');
-    const uniqueNames = [...new Set(ingredientNames)]; // Avoid duplicate fetches
+    const uniqueNames = [...new Set(ingredientNames)];
 
     for (const name of uniqueNames) {
       try {
         const response = await fetch(
           `https://api.pexels.com/v1/search?query=${encodeURIComponent(`${name} food ingredient`)}&per_page=1`,
           {
-            headers: {
-              Authorization: apiKey || '',
-            },
+            headers: { Authorization: apiKey || '' },
           }
         );
         const data = await response.json();
@@ -122,30 +138,27 @@ function InventoryPage({ auth }: InventoryPageProps) {
             [name]: data.photos[0].src.medium,
           }));
         } else {
-          console.warn(`No food-related image found for ${name}, using default`);
           setIngredientImages(prev => ({
             ...prev,
-            [name]: '🥕',
+            [name]: categoryEmojis['general'] || '🥫',
           }));
         }
       } catch (error) {
         console.error(`Error fetching image for ${name}:`, error);
         setIngredientImages(prev => ({
           ...prev,
-          [name]: '🥕',
+          [name]: categoryEmojis['general'] || '🥫',
         }));
       }
     }
   };
 
-  useEffect(() => {
-    fetchInventory();
-  }, [auth.user?.uid]);
-
-  // Integrated Email Notification System for Spoiling Ingredients
+  // Check for spoiling ingredients and send notifications
   useEffect(() => {
     const checkForSpoilingIngredients = async () => {
-      const spoilingSoonItems = inventoryItems.filter(item => item.daysLeft !== undefined && item.daysLeft <= 2);
+      const spoilingSoonItems = inventoryItems.filter(
+        item => item.daysLeft !== undefined && item.daysLeft <= 2
+      );
 
       if (spoilingSoonItems.length > 0 && auth.user?.email) {
         console.log('🔔 EMAIL NOTIFICATION TRIGGER:', {
@@ -161,7 +174,7 @@ function InventoryPage({ auth }: InventoryPageProps) {
             spoilingSoonItems.map(item => ({
               name: item.name,
               daysLeft: item.daysLeft!,
-            })),
+            }))
           );
 
           if (emailResult.success) {
@@ -193,17 +206,39 @@ function InventoryPage({ auth }: InventoryPageProps) {
 
   const handleAddToBin = async (itemId: string) => {
     const itemToMove = inventoryItems.find(item => item.id === itemId);
-    if (!itemToMove) return;
+    if (!itemToMove || !auth.user?.uid) return;
 
     try {
-      const newWasteItem: WasteItem = {
-        id: Date.now() + Math.random().toString(),
+      // Delete from inventory collection
+      await deleteDoc(doc(db, 'inventory', itemId));
+
+      // Add to wasteBin collection
+      const { id: newId, error } = await addToWasteBin(auth.user.uid, {
         name: itemToMove.name,
-        image: (categoryIcons[itemToMove.category || 'general']?.props as any)?.children || '🥕',
+        daysLeft: itemToMove.daysLeft,
+        category: itemToMove.category,
+      });
+
+      if (error) {
+        throw new Error(error);
+      }
+
+      const newWasteItem: WasteItem = {
+        id: newId!,
+        name: itemToMove.name,
         daysLeft: itemToMove.daysLeft || 7,
+        category: itemToMove.category,
       };
+
+      // Update local state
       setWasteManagementItems(prev => [...prev, newWasteItem]);
       setInventoryItems(prev => prev.filter(item => item.id !== itemId));
+
+      // Fetch image for the new waste item if not already fetched
+      if (!ingredientImages[itemToMove.name]) {
+        await fetchIngredientImages([itemToMove.name]);
+      }
+
       console.log('✅ Moved item to waste management bin:', itemToMove.name);
     } catch (err) {
       console.error('❌ Error moving item to waste bin:', err);
@@ -212,8 +247,14 @@ function InventoryPage({ auth }: InventoryPageProps) {
   };
 
   const handleRemoveFromBin = async (itemId: string) => {
-    setWasteManagementItems(prev => prev.filter(item => item.id !== itemId));
-    console.log('✅ Removed item from waste management bin:', itemId);
+    try {
+      await removeFromWasteBin(itemId);
+      setWasteManagementItems(prev => prev.filter(item => item.id !== itemId));
+      console.log('✅ Removed item from waste management bin:', itemId);
+    } catch (err) {
+      console.error('❌ Error removing item from waste bin:', err);
+      setError('Failed to remove item from waste bin');
+    }
   };
 
   const handleGenerateLeftoverRecipes = async () => {
@@ -232,6 +273,17 @@ function InventoryPage({ auth }: InventoryPageProps) {
       const apiKey = getEnvVar('VITE_OPENAI_API_KEY', '');
       const generatedRecipes = await generateRecipesSmart(ingredientNames, apiKey);
       setLeftoverRecipes(generatedRecipes);
+
+      // Save generated recipes to leftoverRecipes collection
+      if (auth.user?.uid) {
+        const saveResult = await saveLeftoverRecipes(auth.user.uid, generatedRecipes);
+        if (saveResult.error) {
+          console.error('❌ Error saving leftover recipes:', saveResult.error);
+          setError('Failed to save leftover recipes');
+        } else {
+          console.log('✅ Successfully saved leftover recipes to Firestore');
+        }
+      }
 
       if (auth.user?.email) {
         await sendRecipeSuggestions(auth.user.email, generatedRecipes.slice(0, 3), ingredientNames);
@@ -285,7 +337,7 @@ function InventoryPage({ auth }: InventoryPageProps) {
             Create the required index
           </a>
         )}
-        <Button onClick={fetchInventory} variant="outline" className="mt-4">
+        <Button onClick={() => window.location.reload()} variant="outline" className="mt-4">
           <RotateCcw className="mr-2 h-4 w-4" /> Retry
         </Button>
       </div>
@@ -359,35 +411,35 @@ function InventoryPage({ auth }: InventoryPageProps) {
                                   className="w-full h-full object-cover"
                                 />
                               ) : (
-                                <span className="text-lg">🥕</span>
+                                <span className="text-lg">{categoryEmojis[item.category || 'general'] || '🥫'}</span>
                               )}
                             </div>
                             <div className="min-w-0 flex-1">
                               <h3 className="font-bold text-white text-sm sm:text-lg truncate">{item.name}</h3>
                               <p className="text-white/90 text-xs sm:text-sm font-medium">
-                                {item.daysLeft} Days left{item.quantity && item.unit && ` • ${item.quantity} ${item.unit}`}
+                                {item.daysLeft !== undefined ? `${item.daysLeft} Days left` : 'No expiry'}
+                                {item.quantity && item.unit && ` • ${item.quantity} ${item.unit}`}
                               </p>
                             </div>
                           </div>
                           <div className="flex justify-center mt-3 w-full">
-                            <Button
-                              size="sm"
-                              variant="destructive"
-                              className="bg-red-500/90 text-white !hover:bg-red-500 font-semibold px-2 py-1 sm:px-3 sm:py-2 h-6 sm:h-7 text-xs"
-                              onClick={() => handleAddToBin(item.id)}
-                            >
-                              <Trash2 className="w-2.5 h-2.5 sm:w-3 sm:h-3 mr-0.5 sm:mr-1" />
-                              <span className="hidden sm:inline">Bin</span>
-                            </Button>
+                          <Button
+                            size="sm"
+                            className="bg-red-500/90 text-white hover:bg-yellow-500! font-semibold px-2 py-1 sm:px-3 sm:py-2 h-6 sm:h-7 text-xs"
+                            onClick={() => handleAddToBin(item.id)}
+                          >
+                            <Trash2 className="w-2.5 h-2.5 sm:w-3 sm:h-3 mr-0.5 sm:mr-1" />
+                            <span className="hidden sm:inline">Bin</span>
+                          </Button>
                           </div>
                           <div className="absolute top-1 right-1 flex space-x-3">
                             <Button
                               size="xs"
                               variant="destructive"
-                              className="bg-red-500/90 !text-white hover:!bg-red-300 font-semibold py-1 sm:px-2 sm:py-1 h-6 sm:h-7 text-xs"
+                              className="bg-red-500/90 text-white !hover:bg-red-600 font-semibold py-1 sm:px-2 sm:py-1 h-6 sm:h-7 text-xs"
                               onClick={() => handleDeleteFromInventory(item.id)}
                             >
-                              <X/>
+                              <X />
                             </Button>
                           </div>
                         </CardContent>
@@ -406,36 +458,41 @@ function InventoryPage({ auth }: InventoryPageProps) {
           </h2>
           <Card className="bg-white/90 backdrop-blur-lg shadow-xl border-0">
             <CardContent className="p-8">
-              <div className="bg-white/60 rounded-3xl p-8 mb-8">
-                <div className="flex items-center justify-between mb-6">
-                  <h3 className="text-2xl font-bold text-emerald-700 flex items-center">
-                    <RotateCcw className="w-6 h-6 mr-3" />
-                    Reuse
-                  </h3>
-                  <motion.div whileHover={{ scale: isGeneratingRecipes ? 1 : 1.05 }} whileTap={{ scale: isGeneratingRecipes ? 1 : 0.95 }}>
-                    <Button
-                      className="bg-gradient-to-r from-emerald-400 to-emerald-500 hover:from-emerald-500 hover:to-emerald-600 text-white font-bold rounded-full px-8 py-3 shadow-lg hover:shadow-xl transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
-                      onClick={handleGenerateLeftoverRecipes}
-                      disabled={wasteManagementItems.length === 0 || isGeneratingRecipes}
-                    >
-                      {isGeneratingRecipes ? (
-                        <>
-                          <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                          Generating Recipes...
-                        </>
-                      ) : (
-                        'Generate Leftover Recipes'
-                      )}
-                    </Button>
-                  </motion.div>
-                </div>
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3 sm:gap-4">
+              <div className="flex items-center justify-between mb-8">
+                <p className="text-gray-600">Items moved here can be used for recipes or recycling</p>
+                <Button
+                  onClick={handleGenerateLeftoverRecipes}
+                  disabled={isGeneratingRecipes || wasteManagementItems.length === 0}
+                  className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold px-8 py-3 rounded-full shadow-lg hover:shadow-xl transition-all duration-300 disabled:opacity-70 disabled:cursor-not-allowed"
+                >
+                  {isGeneratingRecipes ? (
+                    <>
+                      <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                      Generating...
+                    </>
+                  ) : (
+                    <>
+                      <ChefHat className="w-5 h-5 mr-2" />
+                      Generate Leftover Recipes
+                    </>
+                  )}
+                </Button>
+              </div>
+              {wasteManagementItems.length === 0 ? (
+                <p className="text-gray-500 text-center py-12">Waste bin is empty. Good job reducing waste!</p>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                   {wasteManagementItems.map((item, index) => (
-                    <motion.div key={item.id} initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: index * 0.05 }}>
-                      <Card className="bg-gradient-to-r from-emerald-200 to-teal-200 border-0 shadow-md hover:shadow-lg transition-all duration-300">
-                        <CardContent className="p-3 sm:p-4 relative">
-                          <div className="flex flex-col sm:flex-row items-center space-y-2 sm:space-y-0 sm:space-x-3">
-                            <div className="w-8 h-8 sm:w-10 sm:h-10 bg-white/90 rounded-full flex items-center justify-center shadow-sm flex-shrink-0 overflow-hidden">
+                    <motion.div
+                      key={item.id}
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: index * 0.1 }}
+                    >
+                      <Card className="bg-gradient-to-r from-emerald-400/80 to-teal-400/80 border-0 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105">
+                        <CardContent className="p-6 relative">
+                          <div className="flex items-center space-x-4">
+                            <div className="w-12 h-12 bg-white/90 rounded-full flex items-center justify-center shadow-lg overflow-hidden">
                               {ingredientImages[item.name] ? (
                                 <img
                                   src={ingredientImages[item.name]}
@@ -443,29 +500,31 @@ function InventoryPage({ auth }: InventoryPageProps) {
                                   className="w-full h-full object-cover"
                                 />
                               ) : (
-                                <span className="text-base sm:text-lg">{item.image}</span>
+                                <span className="text-lg">{categoryEmojis[item.category || 'general'] || '🥫'}</span>
                               )}
                             </div>
-                            <div className="text-center sm:text-left min-w-0">
-                              <h4 className="font-bold text-emerald-800 text-xs sm:text-sm truncate">{item.name}</h4>
-                              <p className="text-emerald-700 text-xs">{item.daysLeft} Days left</p>
+                            <div>
+                              <h3 className="font-bold text-white">{item.name}</h3>
+                              <p className="text-white/90 text-sm">
+                                {item.daysLeft !== undefined ? `${item.daysLeft} Days left` : 'No expiry'}
+                              </p>
                             </div>
                           </div>
                           <Button
                             size="sm"
                             variant="destructive"
-                            className="absolute top-1 right-1 bg-red-500/90 text-white !hover:bg-red-600 font-semibold px-1 py-1 h-6 text-xs"
+                            className="absolute top-4 right-4 bg-white/20 text-white !hover:bg-red-500"
                             onClick={() => handleRemoveFromBin(item.id)}
                           >
-                            <X className="w-3 h-3" />
+                            <X className="w-4 h-4" />
                           </Button>
                         </CardContent>
                       </Card>
                     </motion.div>
                   ))}
                 </div>
-              </div>
-              <div className="flex flex-col sm:flex-row justify-center gap-4 sm:gap-8">
+              )}
+              <div className="flex flex-col sm:flex-row justify-center gap-4 sm:gap-8 mt-8">
                 <motion.div whileHover={{ scale: 1.08, y: -2 }} whileTap={{ scale: 0.95 }} transition={{ type: 'spring', stiffness: 400, damping: 17 }} className="w-full sm:w-auto">
                   <Button
                     size="lg"
@@ -522,11 +581,6 @@ function InventoryPage({ auth }: InventoryPageProps) {
                       </motion.div>
                     ))}
                   </div>
-                  <div className="pt-4 border-t border-emerald-200">
-                    <p className="text-center text-sm text-emerald-600 font-medium">
-                      💡 Pro tip: Combine multiple techniques for maximum waste reduction!
-                    </p>
-                  </div>
                 </DialogContent>
               </Dialog>
               <Dialog open={showRecycleModal} onOpenChange={setShowRecycleModal}>
@@ -563,11 +617,6 @@ function InventoryPage({ auth }: InventoryPageProps) {
                         </div>
                       </motion.div>
                     ))}
-                  </div>
-                  <div className="pt-4 border-t border-green-200">
-                    <p className="text-center text-sm text-green-600 font-medium">
-                      🌱 Every small action makes a big difference for our environment!
-                    </p>
                   </div>
                 </DialogContent>
               </Dialog>
@@ -712,7 +761,7 @@ function InventoryPage({ auth }: InventoryPageProps) {
                         <div className="flex flex-wrap gap-2">
                           {wasteManagementItems.map((item, index) => (
                             <Badge key={index} className="bg-emerald-100 text-emerald-700 px-3 py-1">
-                              {item.image} {item.name}
+                              {categoryEmojis[item.category || 'general'] || '🥫'} {item.name}
                             </Badge>
                           ))}
                         </div>
@@ -734,7 +783,7 @@ function InventoryPage({ auth }: InventoryPageProps) {
                               </div>
                               <div className="absolute bottom-2 left-2 right-2">
                                 <h3 className="font-bold text-white text-sm mb-1">{recipe.name}</h3>
-                                <div className="flex items-center justify-between text-xs text-white/90">
+                                <div className="flex sensations-center justify-between text-xs text-white/90">
                                   <span>🕒 {recipe.time}</span>
                                   <span>{recipe.calories} cal</span>
                                 </div>

@@ -56,7 +56,7 @@ function MealPlanPage({ recipes = [] }: MealPlanPageProps) {
   });
 
   // Use recipes from props, fallback to hardcoded ones if empty
-  const availableRecipes = recipes.length > 0 
+  const availableRecipes = recipes.length > 0
     ? recipes.map(recipe => ({
         name: recipe.name,
         image: recipe.image || imgImage6,

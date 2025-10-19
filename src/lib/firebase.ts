@@ -1,4 +1,3 @@
-// Firebase Configuration and Integration
 import { initializeApp } from 'firebase/app';
 import {
   getAuth,
@@ -39,7 +38,6 @@ import { getEnvVar, getFirebaseConfig } from './env';
 
 // Firebase configuration loaded from environment variables
 const firebaseConfig = getFirebaseConfig();
-
 
 // Check if we're in development mode with demo config
 const isDemoMode = firebaseConfig.apiKey === "demo-api-key";
@@ -127,6 +125,15 @@ export interface InventoryItem {
   userId: string;
   addedDate: string;
   daysLeft?: number;
+}
+
+export interface WasteBinItem {
+  id: string;
+  name: string;
+  daysLeft: number;
+  category?: string;
+  userId: string;
+  addedAt: Timestamp;
 }
 
 // Authentication Functions
@@ -417,6 +424,29 @@ export const getUserRecipes = async (userId: string) => {
   }
 };
 
+// Firestore Functions - Leftover Recipes
+export const saveLeftoverRecipes = async (userId: string, recipes: Recipe[]) => {
+  try {
+    if (isDemoMode) {
+      console.log("🔧 Demo mode: Simulating save leftover recipes for", userId, recipes.length, "recipes");
+      return { error: null };
+    }
+
+    const batch = recipes.map(recipe =>
+      addDoc(collection(db, 'leftoverRecipes'), {
+        ...recipe,
+        userId,
+        createdAt: Timestamp.now()
+      })
+    );
+
+    await Promise.all(batch);
+    return { error: null };
+  } catch (error: any) {
+    return { error: error.message };
+  }
+};
+
 // Firestore Functions - Inventory
 export const updateInventory = async (userId: string, ingredients: string[]) => {
   try {
@@ -477,6 +507,73 @@ export const getUserInventory = async (userId: string): Promise<{ inventory: Inv
     return { inventory };
   } catch (error: any) {
     return { inventory: [], error: error.message };
+  }
+};
+
+// Firestore Functions - Waste Bin
+export const getUserWasteBin = async (userId: string) => {
+  try {
+    if (isDemoMode) {
+      console.log("🔧 Demo mode: Returning demo waste bin items for", userId);
+      return { wasteItems: [], error: null };
+    }
+
+    const q = query(
+      collection(db, 'wasteBin'),
+      where('userId', '==', userId),
+      orderBy('addedAt', 'desc')
+    );
+
+    const querySnapshot = await getDocs(q);
+    const wasteItems: WasteBinItem[] = [];
+
+    querySnapshot.forEach((doc) => {
+      const data = doc.data();
+      wasteItems.push({
+        id: doc.id,
+        ...data,
+        addedAt: data.addedAt.toDate()
+      } as WasteBinItem);
+    });
+
+    return { wasteItems, error: null };
+  } catch (error: any) {
+    return { wasteItems: [], error: error.message };
+  }
+};
+
+export const addToWasteBin = async (userId: string, item: { name: string; daysLeft?: number; category?: string }) => {
+  try {
+    if (isDemoMode) {
+      console.log("🔧 Demo mode: Simulating add to waste bin for", userId, item);
+      return { id: 'demo-waste-' + Date.now(), error: null };
+    }
+
+    const docRef = await addDoc(collection(db, 'wasteBin'), {
+      userId,
+      name: item.name,
+      daysLeft: item.daysLeft || 0,
+      category: item.category || 'general',
+      addedAt: Timestamp.now()
+    });
+
+    return { id: docRef.id, error: null };
+  } catch (error: any) {
+    return { id: null, error: error.message };
+  }
+};
+
+export const removeFromWasteBin = async (itemId: string) => {
+  try {
+    if (isDemoMode) {
+      console.log("🔧 Demo mode: Simulating remove from waste bin", itemId);
+      return { error: null };
+    }
+
+    await deleteDoc(doc(db, 'wasteBin', itemId));
+    return { error: null };
+  } catch (error: any) {
+    return { error: error.message };
   }
 };
 
