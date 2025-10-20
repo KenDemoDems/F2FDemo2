@@ -4,7 +4,12 @@ import { motion } from 'motion/react';
 import { Button } from '../ui/button';
 import { Card, CardContent } from '../ui/card';
 
-function SDG12Section() {
+interface SDG12SectionProps {
+  onShowLogin?: () => void;
+  onShowSignup?: () => void;
+}
+
+function SDG12Section({ onShowLogin, onShowSignup }: SDG12SectionProps) {
   return (
     <section className="py-20 bg-white dark:bg-gray-900 relative overflow-hidden">
       {/* Background Pattern */}
@@ -205,9 +210,7 @@ function SDG12Section() {
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Button
                 className="bg-emerald-600 hover:bg-emerald-700 dark:emerald-gradient dark:hover:brightness-110 text-white transform hover:scale-105 transition-all px-8 py-3"
-                onClick={() => {
-                  (document.querySelector('nav button') as HTMLButtonElement)?.click(); // Trigger login modal
-                }}
+                onClick={() => onShowSignup?.()}
               >
                 <Heart className="w-5 h-5 mr-2" />
                 Start Your Sustainable Journey
@@ -215,6 +218,7 @@ function SDG12Section() {
               <Button
                 variant="outline"
                 className="border-emerald-200 dark:border-emerald-500/30 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 px-8 py-3"
+                onClick={() => window.open('https://globalgoals.org/goals/12-responsible-consumption-and-production/', '_blank')}
               >
                 <Award className="w-5 h-5 mr-2" />
                 Learn More About SDG 12

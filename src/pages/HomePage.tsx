@@ -343,17 +343,17 @@ function HomePage({ onNavigate, auth, sharedRecipes = [], setSharedRecipes, shar
                 </Badge>
               </div>
             )}
-            <div className="flex gap-4">
+            <div className="flex flex-col sm:flex-row gap-4">
               <Button
                 variant="outline"
-                className="border-emerald-200 dark:border-emerald-500/30 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-500/10"
+                className="border-emerald-200 dark:border-emerald-500/30 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 w-full sm:w-auto"
                 onClick={() => onNavigate?.('inventory')}
               >
                 View Full Inventory
               </Button>
               <Button
                 variant="outline"
-                className="border-emerald-200 dark:border-emerald-500/30 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="border-emerald-200 dark:border-emerald-500/30 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 disabled:opacity-50 disabled:cursor-not-allowed w-full sm:w-auto"
                 onClick={async () => {
                   setIsGeneratingRecipes(true);
                   try {

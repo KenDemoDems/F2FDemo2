@@ -14,9 +14,10 @@ interface LoginModalProps {
   onClose: () => void;
   onLogin: (user: User) => void;
   accessFeature?: string;
+  defaultTab?: 'login' | 'signup';
 }
 
-export function LoginModal({ isOpen, onClose, onLogin, accessFeature }: LoginModalProps) {
+export function LoginModal({ isOpen, onClose, onLogin, accessFeature, defaultTab = 'login' }: LoginModalProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [loginData, setLoginData] = useState({ email: '', password: '' });
   const [signupData, setSignupData] = useState({ name: '', email: '', password: '', confirmPassword: '' });
@@ -132,7 +133,7 @@ export function LoginModal({ isOpen, onClose, onLogin, accessFeature }: LoginMod
           </DialogDescription>
         </DialogHeader>
 
-        <Tabs defaultValue="login" className="w-full">
+        <Tabs defaultValue={defaultTab} className="w-full">
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="login">Log In</TabsTrigger>
             <TabsTrigger value="signup">Sign Up</TabsTrigger>

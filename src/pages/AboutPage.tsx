@@ -11,6 +11,9 @@ interface Developer {
   role: string;
   description: string;
   avatar: string;
+  email: string;
+  github: string;
+  linkedin: string;
 }
 
 interface AuthState {
@@ -26,22 +29,31 @@ interface AboutPageProps {
 function AboutPage({ auth, onNavigate }: AboutPageProps) {
   const developers: Developer[] = [
     {
-      name: "Krishnan Mahinay",
-      role: "Lead Developer & AI Specialist",
-      description: "Integerates AI models to analyze food images and generate creative, accurate recipes based on user uploads.",
-      avatar: "KM"
+      name: "Miles S. Calledo",
+      role: "Backend Developer",
+      description: "Integrates reliable server systems to process images, store recipes, and ensure secure, efficient performance.",
+      avatar: "MC",
+      email: "milescalledo@gmail.com",
+      github: "https://github.com/c-selim",
+      linkedin: "https://www.linkedin.com/in/miles-calledo-8452751b2"
     },
     {
-      name: "James Igcalinos",
+      name: "James Basti S. Igcalinos",
       role: "Full-Stack Developer & UX Designer",
       description: "Focuses on creating seamless user experiences and beautiful interfaces.",
-      avatar: "JI"
+      avatar: "JI",
+      email: "jamessigcalinos@su.edu.ph",
+      github: "https://github.com/jamesbasti",
+      linkedin: "https://www.linkedin.com/in/james-basti-igcalinos-5826aa38b"
     },
     {
-      name: "Andre Miles Calledo",
-      role: "Backend Developer",
-      description: "Integerates reliable server systems to process images, store recipes, and ensure secure, efficient performance.",
-      avatar: "MC"
+      name: "Krishnan V. Mahinay",
+      role: "Lead Developer & AI Specialist",
+      description: "Integrates AI models to analyze food images and generate creative, accurate recipes based on user uploads.",
+      avatar: "KM",
+      email: "kin3.mahinay@gmail.com",
+      github: "https://github.com/kerokenn",
+      linkedin: "https://www.linkedin.com/in/krishnan-mahinay"
     }
   ];
 
@@ -219,7 +231,7 @@ function AboutPage({ auth, onNavigate }: AboutPageProps) {
                       <div className="flex justify-center items-center space-x-3">
                         {/* LinkedIn */}
                         <a
-                          href={`https://linkedin.com/in/${developer.name.toLowerCase().replace(' ', '-')}`}
+                          href={developer.linkedin}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="w-8 h-8 bg-blue-100 hover:bg-blue-200 hover:scale-110 rounded-full flex items-center justify-center transition-all duration-300 shadow-sm hover:shadow-md"
@@ -229,7 +241,7 @@ function AboutPage({ auth, onNavigate }: AboutPageProps) {
 
                         {/* GitHub */}
                         <a
-                          href={`https://github.com/${developer.name.toLowerCase().replace(' ', '-')}`}
+                          href={developer.github}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="w-8 h-8 bg-gray-100 hover:bg-gray-200 hover:scale-110 rounded-full flex items-center justify-center transition-all duration-300 shadow-sm hover:shadow-md"
@@ -239,7 +251,7 @@ function AboutPage({ auth, onNavigate }: AboutPageProps) {
 
                         {/* Email */}
                         <a
-                          href={`mailto:${developer.name.toLowerCase().replace(' ', '.')}@fridgetofork.com`}
+                          href={`mailto:${developer.email}`}
                           className="w-8 h-8 bg-red-100 hover:bg-red-200 hover:scale-110 rounded-full flex items-center justify-center transition-all duration-300 shadow-sm hover:shadow-md"
                         >
                           <Mail className="w-4 h-4 text-red-600" />
@@ -253,22 +265,57 @@ function AboutPage({ auth, onNavigate }: AboutPageProps) {
           </div>
         </div>
 
-        {/* Contact Section */}
+        {/* Key Features Section */}
         <Card className="bg-white/90 backdrop-blur-lg shadow-xl border-0">
-          <CardContent className="p-8 text-center">
-            <h3 className="text-2xl font-bold text-gray-900 mb-4">Get In Touch</h3>
-            <p className="text-gray-600 mb-6 max-w-2xl mx-auto">
-              Have questions, suggestions, or feedback? We'd love to hear from you!
-              Our team is always working to improve your FridgeToFork experience.
+          <CardContent className="p-8">
+            <h3 className="text-2xl font-bold text-gray-900 mb-4 text-center">
+              <span className="bg-gradient-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent">
+                Why Choose FridgeToFork?
+              </span>
+            </h3>
+            <p className="text-gray-600 mb-8 max-w-2xl mx-auto text-center">
+              Discover the features that make meal planning effortless and sustainable.
             </p>
 
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Button className="bg-emerald-600 hover:bg-emerald-700">
-                📧 Contact Support
-              </Button>
-              <Button variant="outline" className="border-emerald-200 text-emerald-700 hover:bg-emerald-50">
-                💡 Share Feedback
-              </Button>
+            <div className="grid md:grid-cols-3 gap-6">
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.1 }}
+                className="p-6 bg-gradient-to-br from-emerald-50 to-teal-50 rounded-xl border-2 border-emerald-100 hover:border-emerald-300 transition-all duration-300"
+              >
+                <Camera className="w-10 h-10 text-emerald-600 mb-4" />
+                <h4 className="font-bold text-gray-900 mb-2">AI-Powered Recognition</h4>
+                <p className="text-sm text-gray-600">
+                  Upload a photo and let our advanced AI identify ingredients instantly with high accuracy.
+                </p>
+              </motion.div>
+
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.2 }}
+                className="p-6 bg-gradient-to-br from-teal-50 to-cyan-50 rounded-xl border-2 border-teal-100 hover:border-teal-300 transition-all duration-300"
+              >
+                <ChefHat className="w-10 h-10 text-teal-600 mb-4" />
+                <h4 className="font-bold text-gray-900 mb-2">Smart Recipe Generation</h4>
+                <p className="text-sm text-gray-600">
+                  Get personalized recipe suggestions based on what you have, complete with instructions and nutrition info.
+                </p>
+              </motion.div>
+
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.3 }}
+                className="p-6 bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl border-2 border-green-100 hover:border-green-300 transition-all duration-300"
+              >
+                <Recycle className="w-10 h-10 text-green-600 mb-4" />
+                <h4 className="font-bold text-gray-900 mb-2">Zero Waste Approach</h4>
+                <p className="text-sm text-gray-600">
+                  Track expiry dates, reduce food waste, and contribute to a more sustainable future with every meal.
+                </p>
+              </motion.div>
             </div>
           </CardContent>
         </Card>

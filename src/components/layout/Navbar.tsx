@@ -143,19 +143,6 @@ export function Navbar({
                       <div className="border-t border-gray-100 dark:border-white/10 my-2"></div>
 
                       <button
-                        className="w-full px-4 py-3 md:py-2 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/10 flex items-center transition-colors"
-                        onClick={() => {
-                          setIsUserDropdownOpen(false);
-                          console.log('Reset password clicked');
-                        }}
-                      >
-                        <KeyRound className="mr-2 h-4 w-4" />
-                        Reset Password
-                      </button>
-
-                      <div className="border-t border-gray-100 dark:border-white/10 my-2"></div>
-
-                      <button
                         className="w-full px-4 py-3 md:py-2 text-left text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/20 flex items-center transition-colors"
                         onClick={() => {
                           setIsUserDropdownOpen(false);

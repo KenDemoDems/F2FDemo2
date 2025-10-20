@@ -50,6 +50,7 @@ export default function App() {
   const [selectedRecipe, setSelectedRecipe] = useState(null);
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [loginAccessFeature, setLoginAccessFeature] = useState<string | undefined>(undefined);
+  const [loginDefaultTab, setLoginDefaultTab] = useState<'login' | 'signup'>('login');
   const [currentPage, setCurrentPage] = useState('home');
   const [auth, setAuth] = useState<AuthState>({
     user: null,
@@ -250,16 +251,24 @@ export default function App() {
         onSettingsChange={handleSettingsChange}
       />
       <HeroSection />
-      <SDG12Section />
+      <SDG12Section 
+        onShowLogin={() => setShowLoginModal(true)} 
+        onShowSignup={() => {
+          setLoginDefaultTab('signup');
+          setShowLoginModal(true);
+        }}
+      />
       <Footer />
       <LoginModal
         isOpen={showLoginModal}
         onClose={() => {
           setShowLoginModal(false);
           setLoginAccessFeature(undefined);
+          setLoginDefaultTab('login');
         }}
         onLogin={handleLogin}
         accessFeature={loginAccessFeature}
+        defaultTab={loginDefaultTab}
       />
     </div>
   );

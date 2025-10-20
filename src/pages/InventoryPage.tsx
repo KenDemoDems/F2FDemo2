@@ -577,12 +577,12 @@ function InventoryPage({ auth }: InventoryPageProps) {
           </h2>
           <Card className="bg-white/90 backdrop-blur-lg shadow-xl border-0">
             <CardContent className="p-8">
-              <div className="flex items-center justify-between mb-8">
-                <p className="text-gray-600">Items moved here can be used for recipes or recycling</p>
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+                <p className="text-gray-600 text-center sm:text-left">Items moved here can be used for recipes or recycling</p>
                 <Button
                   onClick={handleGenerateLeftoverRecipes}
                   disabled={isGeneratingRecipes || wasteManagementItems.length === 0}
-                  className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold px-8 py-3 rounded-full shadow-lg hover:shadow-xl transition-all duration-300 disabled:opacity-70 disabled:cursor-not-allowed"
+                  className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold px-8 py-3 rounded-full shadow-lg hover:shadow-xl transition-all duration-300 disabled:opacity-70 disabled:cursor-not-allowed w-full sm:w-auto whitespace-nowrap"
                 >
                   {isGeneratingRecipes ? (
                     <>
