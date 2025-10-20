@@ -28,7 +28,7 @@ function AboutPage({ auth, onNavigate }: AboutPageProps) {
     {
       name: "Krishnan Mahinay",
       role: "Lead Developer & AI Specialist",
-      description: "Passionate about creating intelligent solutions that make everyday cooking easier.",
+      description: "Integerates AI models to analyze food images and generate creative, accurate recipes based on user uploads.",
       avatar: "KM"
     },
     {
@@ -40,7 +40,7 @@ function AboutPage({ auth, onNavigate }: AboutPageProps) {
     {
       name: "Andre Miles Calledo",
       role: "Backend Developer",
-      description: "Builds robust systems that power our recipe recommendations.",
+      description: "Integerates reliable server systems to process images, store recipes, and ensure secure, efficient performance.",
       avatar: "MC"
     }
   ];

@@ -515,7 +515,7 @@ export const updateInventory = async (userId: string, ingredients: string[]) => 
 
     ingredientCounts.forEach((count, ingredientLower) => {
       const existing = existingItemsMap.get(ingredientLower);
-      
+
       if (existing) {
         // Update existing item - increment quantity (stacking)
         updates.push(

@@ -1,4 +1,4 @@
-// MealPlanPage.tsx
+
 import React, { useState, useEffect } from 'react';
 import { Calendar, Clock, ChefHat, Apple, Plus, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -13,7 +13,7 @@ import imgImage7 from "../assets/2e5eaf280bc2a4732907cd4c7a025b119a66136f.png";
 import imgImage8 from "../assets/2e5eaf280bc2a4732907cd4c7a025b119a66136f.png";
 import { auth, db } from '../lib/firebase';
 import { getUserRecipes, getUserLeftoverRecipes, getUserMealPlan, Recipe, MealPlanEntry } from '../lib/firebase';
-import { addDoc, collection, deleteDoc, doc, Timestamp } from 'firebase/firestore';
+import { addDoc, collection, deleteDoc, doc, Timestamp, getDoc } from 'firebase/firestore';
 
 interface AssignedRecipe extends Recipe {
   entryId?: string;
@@ -131,10 +131,17 @@ function MealPlanPage() {
           setError('Failed to load recipes: ' + (genRecipesResult.error || leftRecipesResult.error));
           setAvailableRecipes([]);
         } else {
-          const combinedRecipes = [
-            ...(genRecipesResult.recipes || []),
-            ...(leftRecipesResult.recipes || [])
-          ].sort((a, b) => getCreatedAtTime(b.createdAt) - getCreatedAtTime(a.createdAt));
+          // Deduplicate recipes by ID, keeping the most recent one
+          const recipeMap = new Map<string, Recipe>();
+          [...(genRecipesResult.recipes || []), ...(leftRecipesResult.recipes || [])].forEach(recipe => {
+            const existing = recipeMap.get(recipe.id);
+            if (!existing || getCreatedAtTime(recipe.createdAt) > getCreatedAtTime(existing.createdAt)) {
+              recipeMap.set(recipe.id, recipe);
+            }
+          });
+          const combinedRecipes = Array.from(recipeMap.values()).sort(
+            (a, b) => getCreatedAtTime(b.createdAt) - getCreatedAtTime(a.createdAt)
+          );
           setAvailableRecipes(combinedRecipes);
         }
 
@@ -235,6 +242,51 @@ function MealPlanPage() {
     }));
   };
 
+  const handleRecipeRemove = async (recipeId: string) => {
+    const userId = auth.currentUser?.uid;
+    if (!userId) {
+      setError('Please log in to remove recipes');
+      return;
+    }
+
+    try {
+      // Check both generatedRecipes and leftoverRecipes concurrently
+      const [genRecipeDoc, leftRecipeDoc] = await Promise.all([
+        getDoc(doc(db, 'generatedRecipes', recipeId)),
+        getDoc(doc(db, 'leftoverRecipes', recipeId))
+      ]);
+
+      // Delete from the appropriate collection if the recipe exists
+      if (genRecipeDoc.exists()) {
+        await deleteDoc(doc(db, 'generatedRecipes', recipeId));
+      } else if (leftRecipeDoc.exists()) {
+        await deleteDoc(doc(db, 'leftoverRecipes', recipeId));
+      } else {
+        // Log a warning with more context
+        console.warn(`Recipe with ID ${recipeId} not found in either generatedRecipes or leftoverRecipes. This may indicate stale data in availableRecipes.`);
+      }
+
+      // Update availableRecipes state
+      setAvailableRecipes(prev => prev.filter(recipe => recipe.id !== recipeId));
+
+      // Update mealPlan state to remove any assignments of this recipe
+      setMealPlan(prev => {
+        const updatedPlan = { ...prev };
+        daysOfWeek.forEach(day => {
+          mealTypes.forEach(type => {
+            if (updatedPlan[day][type as keyof typeof updatedPlan[typeof day]]?.id === recipeId) {
+              updatedPlan[day][type as keyof typeof updatedPlan[typeof day]] = null;
+            }
+          });
+        });
+        return updatedPlan;
+      });
+    } catch (error: any) {
+      setError('Failed to remove recipe: ' + error.message);
+      console.error('Remove recipe error:', error);
+    }
+  };
+
   const now = Date.now();
   const recentRecipes = availableRecipes.filter(r => now - getCreatedAtTime(r.createdAt) < 60 * 60 * 1000);
   const previousRecipes = availableRecipes.filter(r => now - getCreatedAtTime(r.createdAt) >= 60 * 60 * 1000);
@@ -332,7 +384,7 @@ function MealPlanPage() {
                               </p>
                               <Button
                                 size="sm"
-                                variant="ghost"
+                                variant="destructive"
                                 className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity h-4 w-4 sm:h-6 sm:w-6 p-0"
                                 onClick={() => handleMealRemove(day, mealType)}
                               >
@@ -408,12 +460,13 @@ function MealPlanPage() {
                         {recentRecipes.length === 0 ? (
                           <p className="text-gray-500 text-center col-span-2 text-sm">No recent recipes available.</p>
                         ) : (
-                          recentRecipes.map((recipe) => (
+                          recentRecipes.map((recipe, index) => (
                             <motion.div
-                              key={recipe.id}
+                              key={`${recipe.id}-${index}`}
                               initial={{ opacity: 0, y: 10 }}
                               animate={{ opacity: 1, y: 0 }}
                               transition={{ duration: 0.2 }}
+                              className="relative group"
                             >
                               <Card
                                 className="cursor-pointer hover:shadow-md transition-all duration-200 border-2 border-gray-200 hover:border-emerald-400 rounded-md"
@@ -435,6 +488,17 @@ function MealPlanPage() {
                                     {recipe.difficulty}
                                   </Badge>
                                 </CardContent>
+                                <Button
+                                  size="sm"
+                                  variant="destructive"
+                                  className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity h-4 w-4 sm:h-6 sm:w-6 p-0"
+                                  onClick={(e) => {
+                                    e.stopPropagation(); // Prevent triggering meal assignment
+                                    handleRecipeRemove(recipe.id);
+                                  }}
+                                >
+                                  <X className="h-2 w-2 sm:h-3 sm:w-3" />
+                                </Button>
                               </Card>
                             </motion.div>
                           ))
@@ -446,12 +510,13 @@ function MealPlanPage() {
                         {previousRecipes.length === 0 ? (
                           <p className="text-gray-500 text-center col-span-2 text-sm">No previous recipes available.</p>
                         ) : (
-                          previousRecipes.map((recipe) => (
+                          previousRecipes.map((recipe, index) => (
                             <motion.div
-                              key={recipe.id}
+                              key={`${recipe.id}-${index}`}
                               initial={{ opacity: 0, y: 10 }}
                               animate={{ opacity: 1, y: 0 }}
                               transition={{ duration: 0.2 }}
+                              className="relative group"
                             >
                               <Card
                                 className="cursor-pointer hover:shadow-md transition-all duration-200 border-2 border-gray-200 hover:border-emerald-400 rounded-md"
@@ -473,6 +538,17 @@ function MealPlanPage() {
                                     {recipe.difficulty}
                                   </Badge>
                                 </CardContent>
+                                <Button
+                                  size="sm"
+                                  variant="destructive"
+                                  className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity h-4 w-4 sm:h-6 sm:w-6 p-0"
+                                  onClick={(e) => {
+                                    e.stopPropagation(); // Prevent triggering meal assignment
+                                    handleRecipeRemove(recipe.id);
+                                  }}
+                                >
+                                  <X className="h-2 w-2 sm:h-3 sm:w-3" />
+                                </Button>
                               </Card>
                             </motion.div>
                           ))
