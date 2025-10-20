@@ -254,28 +254,52 @@ export const generateRecipesOpenAI = async (
   // Defensive: Ensure availableIngredients is an array
   if (!Array.isArray(availableIngredients) || availableIngredients.length === 0) return [];
   try {
-    const prompt = `Generate exactly ${maxRecipes} creative and diverse recipes using primarily these ingredients: ${availableIngredients.join(", ")}.
-    Prioritize recipes that maximize the use of provided ingredients, but you may include minor additional pantry items (e.g., salt, pepper, oil) if necessary. Ensure recipes are distinct from each other, avoiding multiple variations of the same dish (e.g., different pasta dishes with similar ingredients).
-    Return a JSON object with a single key "recipes" containing an array of recipe objects. Each recipe must include:
-    - name: string (recipe title, unique and descriptive)
+    const prompt = `You are a professional chef. Generate ${maxRecipes} DIFFERENT recipes using these ingredients: ${availableIngredients.join(", ")}.
+
+    CRITICAL REQUIREMENTS:
+    1. Create as many DIFFERENT recipes as possible - maximize variety
+    2. Each recipe must be UNIQUE - different combinations and cooking styles
+    3. Include recipes from various cuisines (Italian, Asian, Mexican, Indian, Mediterranean, American, etc.)
+    4. Use different cooking methods (stir-fry, bake, grill, sauté, steam, boil, roast, fry, etc.)
+    5. Include different meal types (breakfast, lunch, dinner, snacks, appetizers, soups, salads, mains, sides, desserts)
+    6. Vary the ingredient combinations - don't use the same ingredients in every recipe
+    7. You may add common pantry items (water, oil, salt, pepper, etc.) as needed
+    8. NO REPETITION - each recipe should feel completely different from the others
+    
+    GENERATE AS MANY POSSIBLE RECIPES AS YOU CAN (up to ${maxRecipes}) including:
+    - Pasta dishes (various sauces and styles)
+    - Rice dishes (fried rice, risotto, pilaf, etc.)
+    - Egg dishes (omelettes, scrambles, frittatas, etc.)
+    - Chicken dishes (grilled, baked, stir-fried, curried, etc.)
+    - Vegetable dishes (salads, stir-fries, roasted, etc.)
+    - Soups and stews
+    - Appetizers and snacks
+    - Quick meals
+    - Gourmet dishes
+    - Comfort food
+    - Healthy options
+    - Creative fusion recipes
+    
+    Return a JSON object with a single key "recipes" containing an array of ${maxRecipes} recipe objects. Each recipe must include:
+    - name: string (UNIQUE and descriptive recipe name)
     - image: string (use 'placeholder.jpg')
-    - time: string (e.g., '20 min')
-    - difficulty: string (e.g., 'Easy', 'Medium', 'Hard')
+    - time: string (e.g., '15 min', '30 min', '1 hour')
+    - difficulty: string ('Easy', 'Medium', or 'Hard')
     - calories: number (approximate total calories)
-    - nutritionBenefits: string (brief benefits, e.g., 'High in protein')
-    - usedIngredients: string[] (array of ingredients from the provided list that are used)
-    - ingredients: string[] (full list of ingredients with quantities)
-    - instructions: Array<{title: string, detail: string}> (step-by-step instructions)
+    - nutritionBenefits: string (specific benefits, e.g., 'High in protein', 'Rich in vitamins')
+    - usedIngredients: string[] (ingredients from the provided list that are used)
+    - ingredients: string[] (full list with quantities, e.g., '200g chicken', '2 cups pasta', '1 tbsp olive oil')
+    - instructions: Array<{title: string, detail: string}> (detailed step-by-step cooking instructions)
 
     Ensure the response is valid JSON with no additional text, comments, or markdown. Example:
     {
       "recipes": [
         {
-          "name": "Sample Recipe",
+          "name": "Creamy Garlic Parmesan Pasta",
           "image": "placeholder.jpg",
-          "time": "20 min",
+          "time": "25 min",
           "difficulty": "Easy",
-          "calories": 300,
+          "calories": 450,
           "nutritionBenefits": "High in protein",
           "usedIngredients": ["ingredient1", "ingredient2"],
           "ingredients": ["1 cup ingredient1", "2 tbsp ingredient2"],
@@ -297,8 +321,8 @@ export const generateRecipesOpenAI = async (
         model: 'gpt-4o-mini',
         messages: [{ role: 'user', content: prompt }],
         response_format: { type: "json_object" },
-        max_tokens: 2000,
-        temperature: 0.7
+        max_tokens: 6000,
+        temperature: 0.95
       })
     });
 

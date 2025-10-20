@@ -364,10 +364,11 @@ function HomePage({ onNavigate, auth, sharedRecipes = [], setSharedRecipes, shar
                       console.warn('No ingredients available to generate recipes');
                       return;
                     }
+                    console.log('🍳 Generating recipes with', allIngredients.length, 'ingredients:', allIngredients);
                     const { getEnvVar } = await import('../lib/env');
                     const apiKey = getEnvVar('VITE_OPENAI_API_KEY', '');
-                    const recipeResult = await generateRecipesSmart(allIngredients, apiKey, 8, apiKey ? 30 : 10);
-                    console.log('generateRecipesSmart result:', recipeResult);
+                    const recipeResult = await generateRecipesSmart(allIngredients, apiKey, 20, apiKey ? 30 : 10);
+                    console.log('✅ Generated', recipeResult.length, 'recipes:', recipeResult.map(r => r.name));
                     if (!Array.isArray(recipeResult)) {
                       console.error('generateRecipesSmart did not return an array:', recipeResult);
                       return;

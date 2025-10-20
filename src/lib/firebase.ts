@@ -494,6 +494,9 @@ export const updateInventory = async (userId: string, ingredients: string[]) => 
       return { error: null };
     }
 
+    // Import shelf life calculator
+    const { calculateExpiryDate } = await import('./shelfLifeDatabase');
+
     // Get existing inventory
     const q = query(
       collection(db, 'inventory'),
@@ -533,8 +536,10 @@ export const updateInventory = async (userId: string, ingredients: string[]) => 
         );
         console.log(`✅ Stacking: ${ingredientLower} quantity ${existing.quantity} → ${existing.quantity + count}`);
       } else {
-        // Add new item
+        // Add new item with expiry calculation
         const originalName = ingredients.find(i => i.toLowerCase() === ingredientLower) || ingredientLower;
+        const { expiryDate, daysLeft, shelfLife } = calculateExpiryDate(originalName);
+        
         updates.push(
           addDoc(collection(db, 'inventory'), {
             userId,
@@ -542,11 +547,14 @@ export const updateInventory = async (userId: string, ingredients: string[]) => 
             quantity: count,
             unit: 'piece',
             addedDate: Timestamp.now(),
+            expiryDate: Timestamp.fromDate(expiryDate),
+            daysLeft: daysLeft,
+            shelfLife: shelfLife,
             category: 'general',
             fromDetection: true
           })
         );
-        console.log(`✅ Adding new: ${originalName} with quantity ${count}`);
+        console.log(`✅ Adding new: ${originalName} (qty: ${count}, expires in ${daysLeft} days)`);
       }
     });
 

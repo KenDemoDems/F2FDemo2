@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { Apple, Carrot, Fish, Trash2, RotateCcw, Recycle, X, Loader2, ChefHat, Clock, Award, ArrowLeft } from 'lucide-react';
+import { Apple, Carrot, Fish, Trash2, RotateCcw, Recycle, X, Loader2, ChefHat, Clock, Award, ArrowLeft, Pencil } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
+import { Input } from '../components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../components/ui/dialog';
 import { getUserInventory, addToWasteBin, removeFromWasteBin, getUserWasteBin } from '../lib/firebase';
 import { generateRecipesSmart } from '../lib/recipeGenerator';
-import { sendSpoilingReminder, sendRecipeSuggestions } from '../lib/emailService';
+import { sendExpiryNotification } from '../lib/resendService';
+import { sendRecipeSuggestions } from '../lib/emailService';
 import { deleteDoc, doc, addDoc, collection, Timestamp, updateDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 
@@ -73,6 +75,8 @@ function InventoryPage({ auth }: InventoryPageProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [ingredientImages, setIngredientImages] = useState<Record<string, string>>({});
+  const [editingItem, setEditingItem] = useState<{ id: string; name: string; currentDays: number } | null>(null);
+  const [newExpiryDays, setNewExpiryDays] = useState<string>('');
 
   // Fetch inventory and waste bin from Firestore
   useEffect(() => {
@@ -171,32 +175,32 @@ function InventoryPage({ auth }: InventoryPageProps) {
 
   // Check for spoiling ingredients and send notifications
   useEffect(() => {
-    const checkForSpoilingIngredients = async () => {
-      const spoilingSoonItems = inventoryItems.filter(
+    const checkAndNotify = async () => {
+      // Check for items expiring within 2 days
+      const spoilingSoon = inventoryItems.filter(
         item => item.daysLeft !== undefined && item.daysLeft <= 2
       );
 
-      if (spoilingSoonItems.length > 0 && auth.user?.email) {
-        console.log('🔔 EMAIL NOTIFICATION TRIGGER:', {
-          spoilingItems: spoilingSoonItems,
+      if (spoilingSoon.length > 0 && auth.user?.email) {
+        console.log('� EMAIL NOTIFICATION TRIGGER:', {
+          spoilingItems: spoilingSoon.length,
           userEmail: auth.user.email,
-          message: `You have ${spoilingSoonItems.length} ingredients expiring soon!`,
-          items: spoilingSoonItems.map(item => `${item.name} (${item.daysLeft} days left)`).join(', '),
+          items: spoilingSoon.map(item => `${item.name} (${item.daysLeft} days left)`).join(', '),
         });
 
         try {
-          const emailResult = await sendSpoilingReminder(
+          const result = await sendExpiryNotification(
             auth.user.email,
-            spoilingSoonItems.map(item => ({
+            spoilingSoon.map(item => ({
               name: item.name,
               daysLeft: item.daysLeft!,
             }))
           );
 
-          if (emailResult.success) {
-            console.log('✅ Spoiling reminder email sent successfully');
+          if (result.success) {
+            console.log('✅ Expiry notification email sent successfully via Resend');
           } else {
-            console.error('❌ Failed to send spoiling reminder:', emailResult.error);
+            console.error('❌ Failed to send expiry notification:', result.error);
           }
         } catch (error) {
           console.error('❌ Email notification error:', error);
@@ -204,8 +208,11 @@ function InventoryPage({ auth }: InventoryPageProps) {
       }
     };
 
-    checkForSpoilingIngredients();
-    const notificationInterval = setInterval(checkForSpoilingIngredients, 12 * 60 * 60 * 1000);
+    // Check once on mount
+    checkAndNotify();
+    
+    // Check every 12 hours
+    const notificationInterval = setInterval(checkAndNotify, 12 * 60 * 60 * 1000);
     return () => clearInterval(notificationInterval);
   }, [inventoryItems, auth.user]);
 
@@ -217,6 +224,43 @@ function InventoryPage({ auth }: InventoryPageProps) {
     } catch (err) {
       console.error('❌ Error deleting item from Firestore:', err);
       setError('Failed to delete item from inventory');
+    }
+  };
+
+  const handleEditExpiry = (itemId: string, itemName: string, currentDays: number | undefined) => {
+    setEditingItem({ id: itemId, name: itemName, currentDays: currentDays || 0 });
+    setNewExpiryDays(currentDays?.toString() || '');
+  };
+
+  const handleSaveExpiry = async () => {
+    if (!auth.user?.uid || !editingItem) return;
+    
+    const daysLeft = parseInt(newExpiryDays);
+    if (isNaN(daysLeft) || daysLeft < 0) {
+      alert('Please enter a valid number of days');
+      return;
+    }
+
+    try {
+      const expiryDate = new Date();
+      expiryDate.setDate(expiryDate.getDate() + daysLeft);
+      
+      const itemRef = doc(db, 'inventory', editingItem.id);
+      await updateDoc(itemRef, {
+        daysLeft: daysLeft,
+        expiryDate: Timestamp.fromDate(expiryDate),
+      });
+      
+      setInventoryItems(prev => prev.map(item => 
+        item.id === editingItem.id ? { ...item, daysLeft } : item
+      ));
+      
+      setEditingItem(null);
+      setNewExpiryDays('');
+      console.log('✅ Expiry date updated successfully');
+    } catch (error) {
+      console.error('Error updating expiry:', error);
+      alert('Failed to update expiry date');
     }
   };
 
@@ -412,10 +456,10 @@ function InventoryPage({ auth }: InventoryPageProps) {
                 <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
                 <span className="text-sm text-emerald-700 font-medium">Email Notifications Enabled</span>
               </div>
-              {inventoryItems.filter(item => item.daysLeft !== undefined && item.daysLeft <= 2).length > 0 && (
+              {inventoryItems.filter(item => item.daysLeft !== undefined && item.daysLeft <= 3).length > 0 && (
                 <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} className="bg-amber-100 border border-amber-300 px-3 py-2 rounded-lg">
                   <span className="text-amber-800 text-sm font-medium">
-                    📧 Notification sent for {inventoryItems.filter(item => item.daysLeft !== undefined && item.daysLeft <= 2).length} expiring items
+                    📧 Notification sent for {inventoryItems.filter(item => item.daysLeft !== undefined && item.daysLeft <= 3).length} expiring items
                   </span>
                 </motion.div>
               )}
@@ -427,12 +471,55 @@ function InventoryPage({ auth }: InventoryPageProps) {
               {inventoryItems.length === 0 ? (
                 <p className="text-gray-500 text-center py-8">No items in your inventory yet. Add some ingredients!</p>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
-                  {inventoryItems.map((item, index) => (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                  {inventoryItems.map((item, index) => {
+                    // Determine urgency level
+                    const isCritical = item.daysLeft !== undefined && item.daysLeft <= 1;
+                    const isUrgent = item.daysLeft !== undefined && item.daysLeft <= 3 && !isCritical;
+                    const isWarning = item.daysLeft !== undefined && item.daysLeft <= 7 && !isUrgent && !isCritical;
+                    
+                    return (
                     <motion.div key={item.id} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.1 }}>
-                      <Card className="bg-gradient-to-r from-emerald-400/80 to-teal-400/80 border-0 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105">
-                        <CardContent className="p-10 sm:p-6 relative flex flex-col items-center">
-                          <div className="flex items-center space-x-3 sm:space-x-4 pr-10 sm:pr-14 mb-4">
+                      <Card 
+                        className="bg-gradient-to-r from-emerald-400/80 to-teal-400/80 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105 relative overflow-hidden border-0"
+                        style={{
+                          ...(isCritical && {
+                            boxShadow: '0 0 0 4px rgb(239 68 68), 0 10px 15px -3px rgb(0 0 0 / 0.1)',
+                            animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite'
+                          }),
+                          ...(isUrgent && {
+                            boxShadow: '0 0 0 4px rgb(251 146 60), 0 10px 15px -3px rgb(0 0 0 / 0.1)'
+                          }),
+                          ...(isWarning && {
+                            boxShadow: '0 0 0 2px rgb(250 204 21), 0 10px 15px -3px rgb(0 0 0 / 0.1)'
+                          })
+                        }}
+                      >
+                        {/* Urgency Corner Ribbon - Only for Critical */}
+                        {isCritical && (
+                          <div className="absolute -top-1 -right-1 w-24 h-24 overflow-hidden z-20">
+                            <div className="absolute transform rotate-45 bg-red-600 text-white text-xs font-bold py-1 right-[-35px] top-[15px] w-[170px] text-center shadow-lg">
+                              🚨 URGENT!
+                            </div>
+                          </div>
+                        )}
+                        
+                        <CardContent className="p-6 relative flex flex-col items-center">
+                          {/* Urgency Badge - Top Left */}
+                          {item.daysLeft !== undefined && item.daysLeft <= 3 && (
+                            <Badge className={`
+                              absolute top-2 left-2 font-bold text-xs z-10 shadow-lg
+                              ${
+                                isCritical
+                                  ? 'bg-red-500 text-white animate-bounce' 
+                                  : 'bg-orange-500 text-white'
+                              }
+                            `}>
+                              {item.daysLeft === 0 ? '🚨 TODAY!' : item.daysLeft === 1 ? '⚠️ TOMORROW' : `⏰ ${item.daysLeft}d`}
+                            </Badge>
+                          )}
+                          
+                          <div className="flex items-center space-x-3 sm:space-x-4 pr-10 sm:pr-14 mb-4 mt-6">
                             <div className="w-10 h-10 sm:w-12 sm:h-12 bg-white/90 rounded-full flex items-center justify-center shadow-lg flex-shrink-0 overflow-hidden">
                               {ingredientImages[item.name] ? (
                                 <img
@@ -453,29 +540,36 @@ function InventoryPage({ auth }: InventoryPageProps) {
                             </div>
                           </div>
                           <div className="flex justify-center mt-3 w-full">
-                            <Button
-                              size="sm"
-                              className="bg-red-500/90 text-white hover:bg-yellow-500 font-semibold px-2 py-1 sm:px-3 sm:py-2 h-6 sm:h-7 text-xs"
-                              onClick={() => handleAddToBin(item.id)}
-                            >
-                              <Trash2 className="w-2.5 h-2.5 sm:w-3 sm:h-3 mr-0.5 sm:mr-1" />
-                              <span className="hidden sm:inline">Bin</span>
-                            </Button>
+                          <button
+                            className="inline-flex items-center justify-center bg-red-500 text-white hover:bg-red-700 hover:scale-110 hover:shadow-xl transition-all duration-300 font-semibold px-2 py-1 sm:px-3 sm:py-2 h-6 sm:h-7 text-xs shadow-md rounded-md border-0"
+                            onClick={() => handleAddToBin(item.id)}
+                          >
+                            <Trash2 className="w-2.5 h-2.5 sm:w-3 sm:h-3 mr-0.5 sm:mr-1" />
+                            <span className="hidden sm:inline">Bin</span>
+                          </button>
                           </div>
                           <div className="absolute top-1 right-1 flex space-x-3">
-                            <Button
-                              size="xs"
-                              variant="destructive"
-                              className="bg-red-500/90 text-white hover:bg-red-600 font-semibold py-1 sm:px-2 sm:py-1 h-6 sm:h-7 text-xs"
+                            <button
+                              className="inline-flex items-center justify-center bg-blue-500 text-white hover:bg-blue-700 hover:scale-110 transition-all duration-300 font-semibold px-2 py-1 h-6 sm:h-7 text-xs shadow-md rounded-md border-0"
+                          </div>
+                          <div className="absolute top-1 right-1 flex space-x-1">
+                            <button
+                              className="inline-flex items-center justify-center bg-blue-500 text-white hover:bg-blue-700 hover:scale-110 transition-all duration-300 font-semibold px-2 py-1 h-6 sm:h-7 text-xs shadow-md rounded-md border-0"
+                              onClick={() => handleEditExpiry(item.id, item.name, item.daysLeft)}
+                            >
+                              <Pencil className="w-3 h-3" />
+                            </button>
+                            <button
+                              className="inline-flex items-center justify-center bg-white/20 text-white hover:bg-red-500 hover:scale-110 hover:rotate-90 hover:shadow-xl transition-all duration-300 font-semibold px-1.5 py-1 h-6 sm:h-7 text-xs shadow-md rounded-md border-0"
                               onClick={() => handleDeleteFromInventory(item.id)}
                             >
-                              <X />
-                            </Button>
+                              <X className="w-3 h-3" />
+                            </button>
                           </div>
                         </CardContent>
                       </Card>
                     </motion.div>
-                  ))}
+                  )})}
                 </div>
               )}
             </CardContent>
@@ -841,6 +935,51 @@ function InventoryPage({ auth }: InventoryPageProps) {
           </div>
         )}
       </div>
+
+      {/* Edit Expiry Dialog */}
+      <Dialog open={editingItem !== null} onOpenChange={(open: boolean) => !open && setEditingItem(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Expiry Date</DialogTitle>
+            <DialogDescription>
+              Update the expiry date for {editingItem?.name}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <label htmlFor="expiryDays" className="text-sm font-medium text-gray-700">
+                Days until expiry
+              </label>
+              <Input
+                id="expiryDays"
+                type="number"
+                min="0"
+                value={newExpiryDays}
+                onChange={(e) => setNewExpiryDays(e.target.value)}
+                placeholder="Enter number of days"
+                className="w-full"
+              />
+              <p className="text-xs text-gray-500">
+                Current: {editingItem?.currentDays || 0} days left
+              </p>
+            </div>
+            <div className="flex justify-end space-x-2">
+              <Button
+                variant="outline"
+                onClick={() => setEditingItem(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white"
+                onClick={handleSaveExpiry}
+              >
+                Save Changes
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
