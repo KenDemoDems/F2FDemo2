@@ -48,6 +48,7 @@ function getCreatedAtTime(createdAt: Date | Timestamp): number {
 
 function MealPlanPage() {
   const [selectedMeal, setSelectedMeal] = useState<{ day: string; type: string; meal: any } | null>(null);
+  const [activeTab, setActiveTab] = useState<'recent' | 'previous'>('recent');
   const [mealPlan, setMealPlan] = useState<MealPlanData>(
     daysOfWeek.reduce((acc, day) => ({ ...acc, [day]: { Breakfast: null, Lunch: null, Dinner: null } }), {})
   );
@@ -202,28 +203,41 @@ function MealPlanPage() {
   const handleRecipeRemove = async (recipeId: string) => {
     const userId = auth.currentUser?.uid;
     if (!userId) {
+      console.error('No user logged in');
       setError('You must be logged in to remove recipes.');
       return;
     }
 
     try {
+      console.log('🗑️ Removing recipe:', recipeId);
+      
       // Check both generatedRecipes and leftoverRecipes concurrently
       const [genRecipeDoc, leftRecipeDoc] = await Promise.all([
         getDoc(doc(db, 'generatedRecipes', recipeId)),
         getDoc(doc(db, 'leftoverRecipes', recipeId))
       ]);
 
+      let recipeFound = false;
+
       // Delete from the appropriate collection if the recipe exists
       if (genRecipeDoc.exists()) {
+        console.log('Found in generatedRecipes, deleting...');
         await deleteDoc(doc(db, 'generatedRecipes', recipeId));
         setGeneratedRecipes(prev => prev.filter(recipe => recipe.id !== recipeId));
-        console.log(`Removed recipe ${recipeId} from generatedRecipes`);
-      } else if (leftRecipeDoc.exists()) {
+        console.log(`✅ Removed recipe ${recipeId} from generatedRecipes`);
+        recipeFound = true;
+      }
+      
+      if (leftRecipeDoc.exists()) {
+        console.log('Found in leftoverRecipes, deleting...');
         await deleteDoc(doc(db, 'leftoverRecipes', recipeId));
         setLeftoverRecipes(prev => prev.filter(recipe => recipe.id !== recipeId));
-        console.log(`Removed recipe ${recipeId} from leftoverRecipes`);
-      } else {
-        console.warn(`Recipe with ID ${recipeId} not found in either generatedRecipes or leftoverRecipes.`);
+        console.log(`✅ Removed recipe ${recipeId} from leftoverRecipes`);
+        recipeFound = true;
+      }
+      
+      if (!recipeFound) {
+        console.warn(`⚠️ Recipe with ID ${recipeId} not found in either collection`);
       }
 
       // Find and delete meal plan entries using this recipe
@@ -235,7 +249,7 @@ function MealPlanPage() {
       const mealPlanSnapshot = await getDocs(mealPlanQuery);
       const mealPlanDeletes = mealPlanSnapshot.docs.map(d => deleteDoc(d.ref));
       await Promise.all(mealPlanDeletes);
-      console.log(`Removed ${mealPlanDeletes.length} meal plan entries for recipe ${recipeId}`);
+      console.log(`✅ Removed ${mealPlanDeletes.length} meal plan entries for recipe ${recipeId}`);
 
       // Update mealPlan state to remove any assignments of this recipe
       setMealPlan(prev => {
@@ -249,9 +263,11 @@ function MealPlanPage() {
         });
         return updatedPlan;
       });
+      
+      console.log('✅ Recipe removal complete');
     } catch (error: any) {
+      console.error('❌ Remove recipe error:', error);
       setError('Failed to remove recipe: ' + error.message);
-      console.error('Remove recipe error:', error);
     }
   };
 
@@ -410,22 +426,37 @@ function MealPlanPage() {
                     </DialogDescription>
                   </DialogHeader>
 
-                  <Tabs defaultValue="recent" className="mt-4">
+                  <Tabs value={activeTab} onValueChange={(value: string) => setActiveTab(value as 'recent' | 'previous')} className="mt-4">
                     <TabsList className="grid w-full grid-cols-2 bg-gray-100 rounded-lg p-1">
                       <TabsTrigger
                         value="recent"
-                        className="data-[state=active]:bg-white data-[state=active]:shadow-sm rounded-md text-sm font-medium text-gray-700"
+                        className={`rounded-md text-sm font-semibold transition-all duration-300 ${
+                          activeTab === 'recent'
+                            ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-lg shadow-emerald-200'
+                            : 'text-gray-600 hover:text-gray-900'
+                        }`}
                       >
                         Recent
                       </TabsTrigger>
                       <TabsTrigger
                         value="previous"
-                        className="data-[state=active]:bg-white data-[state=active]:shadow-sm rounded-md text-sm font-medium text-gray-700"
+                        className={`rounded-md text-sm font-semibold transition-all duration-300 ${
+                          activeTab === 'previous'
+                            ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-lg shadow-emerald-200'
+                            : 'text-gray-600 hover:text-gray-900'
+                        }`}
                       >
                         Previous
                       </TabsTrigger>
                     </TabsList>
                     <TabsContent value="recent">
+                      <motion.div
+                        key="recent"
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -10 }}
+                        transition={{ duration: 0.3 }}
+                      >
                       <div className="grid grid-cols-2 gap-3 overflow-y-auto max-h-[40vh] mt-3 pr-1">
                         {recentGeneratedRecipes.length === 0 && recentLeftoverRecipes.length === 0 ? (
                           <p className="text-gray-500 text-center col-span-2 text-sm">No recent recipes available.</p>
@@ -518,8 +549,16 @@ function MealPlanPage() {
                           </>
                         )}
                       </div>
+                      </motion.div>
                     </TabsContent>
                     <TabsContent value="previous">
+                      <motion.div
+                        key="previous"
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -10 }}
+                        transition={{ duration: 0.3 }}
+                      >
                       <div className="grid grid-cols-2 gap-3 overflow-y-auto max-h-[40vh] mt-3 pr-1">
                         {previousGeneratedRecipes.length === 0 && previousLeftoverRecipes.length === 0 ? (
                           <p className="text-gray-500 text-center col-span-2 text-sm">No previous recipes available.</p>
@@ -612,6 +651,7 @@ function MealPlanPage() {
                           </>
                         )}
                       </div>
+                      </motion.div>
                     </TabsContent>
                   </Tabs>
                 </motion.div>
