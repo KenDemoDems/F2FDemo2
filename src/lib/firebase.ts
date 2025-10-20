@@ -34,6 +34,13 @@ import {
   Timestamp
 } from 'firebase/firestore';
 
+export {
+  Timestamp,
+  addDoc,
+  collection,
+  updateDoc
+} from 'firebase/firestore';
+
 import { getEnvVar, getFirebaseConfig } from './env';
 
 // Firebase configuration loaded from environment variables

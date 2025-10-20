@@ -18,6 +18,7 @@ import {
   Ingredient
 } from '../lib/firebase';
 import { generateRecipes, generateRecipesWithImages, generateRecipesSmart } from '../lib/recipeGenerator';
+import { db, addDoc, collection, Timestamp, updateDoc } from '../lib/firebase';
 
 interface DetectedIngredient {
   name: string;
@@ -102,16 +103,16 @@ function HomePage({ onNavigate, auth, sharedRecipes = [], setSharedRecipes, shar
         setIsUploadingImage(false);
         return;
       }
-      
+
       const newIngredientNames = visionResult.ingredients.map((ing: DetectedIngredient) => ing.name);
       console.log('🔍 Newly detected ingredients:', newIngredientNames);
-      
+
       // Merge with existing ingredients (stacking behavior)
       const updatedMap = { ...ingredientMap };
       newIngredientNames.forEach(name => {
         updatedMap[name] = (updatedMap[name] || 0) + 1;
       });
-      
+
       const firebaseIngredients: Ingredient[] = visionResult.ingredients.map((ing: DetectedIngredient) => ({
         id: '',
         name: ing.name,
@@ -120,18 +121,18 @@ function HomePage({ onNavigate, auth, sharedRecipes = [], setSharedRecipes, shar
         confidence: ing.confidence,
         category: ing.category || 'detected',
       }));
-      
+
       // Save to Firebase (all operations)
       await saveDetectedIngredients(auth.user.uid, firebaseIngredients);
       await updateInventory(auth.user.uid, newIngredientNames);
-      
+
       // Update local state with merged ingredients
       setIngredientMap(updatedMap);
-      
+
       console.log('✅ Successfully detected and merged ingredients. Total unique:', Object.keys(updatedMap).length);
       console.log('💡 Click "Generate Recipe" button to create recipes from your ingredients');
       setShowUploadOptions(false);
-      
+
       // Only stop loading AFTER all ingredients are in the state
       setIsUploadingImage(false);
     } catch (error) {
@@ -318,11 +319,11 @@ function HomePage({ onNavigate, auth, sharedRecipes = [], setSharedRecipes, shar
                           const updatedMap = { ...ingredientMap };
                           delete updatedMap[ingredient];
                           setIngredientMap(updatedMap);
-                          
+
                           // Update Firebase with new ingredient list
                           const newIngredientArray = ingredientMapToArray(updatedMap);
                           await updateInventory(auth.user.uid, newIngredientArray);
-                          
+
                           console.log(`✅ Removed ingredient: ${ingredient}`);
                         } catch (error) {
                           console.error(`❌ Error removing ingredient ${ingredient}:`, error);
@@ -367,26 +368,32 @@ function HomePage({ onNavigate, auth, sharedRecipes = [], setSharedRecipes, shar
                     const apiKey = getEnvVar('VITE_OPENAI_API_KEY', '');
                     const recipeResult = await generateRecipesSmart(allIngredients, apiKey, 8, apiKey ? 30 : 10);
                     console.log('generateRecipesSmart result:', recipeResult);
-                    const recipes = Array.isArray(recipeResult)
-                      ? recipeResult.map((recipe, index) => ({
-                          ...recipe,
-                          id: `recipe-${index}`,
-                          createdAt: new Date(),
-                        }))
-                      : [];
                     if (!Array.isArray(recipeResult)) {
                       console.error('generateRecipesSmart did not return an array:', recipeResult);
+                      return;
                     }
-                    setGeneratedRecipes(recipes);
-                    if (setSharedRecipes) setSharedRecipes(recipes);
+                    const savedRecipes = [];
+                    for (const recipe of recipeResult) {
+                      const { id, ...recipeData } = recipe;
+                      const docRef = await addDoc(collection(db, 'generatedRecipes'), {
+                        ...recipeData,
+                        userId: auth.user?.uid,
+                        createdAt: Timestamp.now(),
+                      });
+                      await updateDoc(docRef, { id: docRef.id });
+                      savedRecipes.push({
+                        ...recipe,
+                        id: docRef.id,
+                        createdAt: new Date(),
+                      });
+                    }
+                    setGeneratedRecipes(savedRecipes);
+                    if (setSharedRecipes) setSharedRecipes(savedRecipes);
                     setCurrentRecipeIndex(0);
-                    if (recipes.length > 0) {
-                      setSelectedRecipeId(recipes[0].id);
+                    if (savedRecipes.length > 0) {
+                      setSelectedRecipeId(savedRecipes[0].id);
                     } else {
                       console.warn('No recipes generated');
-                    }
-                    if (auth.user?.uid) {
-                      await saveGeneratedRecipes(auth.user.uid, recipes);
                     }
                   } catch (error) {
                     console.error('Error generating recipes:', error);
@@ -714,22 +721,22 @@ function HomePage({ onNavigate, auth, sharedRecipes = [], setSharedRecipes, shar
                   try {
                     const quantity = parseInt(newIngredientQuantity) || 1;
                     const ingredientName = newIngredientName.trim();
-                    
+
                     // Add ingredient to Firebase
                     await addManualIngredient(auth.user.uid, ingredientName);
-                    
+
                     // Add to local state (update quantity)
                     const updatedMap = { ...ingredientMap };
                     updatedMap[ingredientName] = (updatedMap[ingredientName] || 0) + quantity;
                     setIngredientMap(updatedMap);
-                    
+
                     // Update inventory with quantity
                     const ingredientsToAdd = Array(quantity).fill(ingredientName);
                     await updateInventory(auth.user.uid, ingredientsToAdd);
-                    
+
                     console.log(`✅ Manual ingredient added: ${ingredientName} (x${quantity})`);
                     console.log('💡 Click "Generate Recipe" button to create recipes with your ingredients');
-                    
+
                     // Reset and close modal
                     setShowAddIngredientModal(false);
                     setNewIngredientName('');

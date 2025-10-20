@@ -5,10 +5,10 @@ import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../components/ui/dialog';
-import { getUserInventory, addToWasteBin, removeFromWasteBin, getUserWasteBin, saveLeftoverRecipes } from '../lib/firebase';
+import { getUserInventory, addToWasteBin, removeFromWasteBin, getUserWasteBin } from '../lib/firebase';
 import { generateRecipesSmart } from '../lib/recipeGenerator';
 import { sendSpoilingReminder, sendRecipeSuggestions } from '../lib/emailService';
-import { deleteDoc, doc } from 'firebase/firestore';
+import { deleteDoc, doc, addDoc, collection, Timestamp, updateDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 
 interface AuthState {
@@ -33,6 +33,22 @@ interface WasteItem {
   category?: string;
 }
 
+interface Recipe {
+  id: string;
+  name: string;
+  time: string;
+  image: string;
+  difficulty: string;
+  calories: number;
+  ingredients: string[];
+  instructions: Array<{ title: string; detail: string }>;
+  nutritionBenefits?: string;
+  usedIngredients?: string[];
+  matchPercentage?: number;
+  missingIngredients?: string[];
+  createdAt: Date;
+}
+
 interface InventoryPageProps {
   auth: AuthState;
 }
@@ -51,8 +67,8 @@ function InventoryPage({ auth }: InventoryPageProps) {
   const [wasteManagementItems, setWasteManagementItems] = useState<WasteItem[]>([]);
   const [showRecoverModal, setShowRecoverModal] = useState(false);
   const [showRecycleModal, setShowRecycleModal] = useState(false);
-  const [leftoverRecipes, setLeftoverRecipes] = useState<any[]>([]);
-  const [selectedLeftoverRecipe, setSelectedLeftoverRecipe] = useState<any | null>(null);
+  const [leftoverRecipes, setLeftoverRecipes] = useState<Recipe[]>([]);
+  const [selectedLeftoverRecipe, setSelectedLeftoverRecipe] = useState<Recipe | null>(null);
   const [isGeneratingRecipes, setIsGeneratingRecipes] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -272,32 +288,38 @@ function InventoryPage({ auth }: InventoryPageProps) {
       const { getEnvVar } = await import('../lib/env');
       const apiKey = getEnvVar('VITE_OPENAI_API_KEY', '');
       const generatedRecipes = await generateRecipesSmart(ingredientNames, apiKey);
-      
-      // Add id and createdAt to recipes before saving
-      const recipesWithIds = generatedRecipes.map((recipe, index) => ({
-        ...recipe,
-        id: `leftover-${Date.now()}-${index}`,
-        createdAt: new Date()
-      }));
-      
-      setLeftoverRecipes(recipesWithIds);
 
-      // Save generated recipes to leftoverRecipes collection
-      if (auth.user?.uid) {
-        const saveResult = await saveLeftoverRecipes(auth.user.uid, recipesWithIds);
-        if (saveResult.error) {
-          console.error('❌ Error saving leftover recipes:', saveResult.error);
-          setError('Failed to save leftover recipes');
-        } else {
-          console.log('✅ Successfully saved leftover recipes to Firestore');
-        }
+      if (!Array.isArray(generatedRecipes)) {
+        console.error('generateRecipesSmart did not return an array:', generatedRecipes);
+        setIsGeneratingRecipes(false);
+        return;
       }
 
+      // Save to Firebase and assign unique IDs
+      const savedRecipes: Recipe[] = [];
+      for (const recipe of generatedRecipes) {
+        const { id, createdAt, ...recipeData } = recipe; // Remove any temporary id and createdAt
+        const docRef = await addDoc(collection(db, 'generatedRecipes'), {
+          ...recipeData,
+          userId: auth.user?.uid,
+          createdAt: Timestamp.now(),
+        });
+        await updateDoc(docRef, { id: docRef.id }); // Store the unique ID in the document
+        savedRecipes.push({
+          ...recipeData,
+          id: docRef.id,
+          createdAt: new Date(),
+        } as Recipe);
+      }
+
+      setLeftoverRecipes(savedRecipes);
+
+      // Send email with recipe suggestions
       if (auth.user?.email) {
-        await sendRecipeSuggestions(auth.user.email, recipesWithIds.slice(0, 3), ingredientNames);
+        await sendRecipeSuggestions(auth.user.email, savedRecipes.slice(0, 3), ingredientNames);
       }
 
-      console.log('✅ Successfully generated leftover recipes:', recipesWithIds.length);
+      console.log('✅ Successfully generated leftover recipes:', savedRecipes.length);
     } catch (error) {
       console.error('❌ Error generating leftover recipes:', error);
       setError('Failed to generate leftover recipes');
@@ -431,20 +453,20 @@ function InventoryPage({ auth }: InventoryPageProps) {
                             </div>
                           </div>
                           <div className="flex justify-center mt-3 w-full">
-                          <Button
-                            size="sm"
-                            className="bg-red-500/90 text-white hover:bg-yellow-500! font-semibold px-2 py-1 sm:px-3 sm:py-2 h-6 sm:h-7 text-xs"
-                            onClick={() => handleAddToBin(item.id)}
-                          >
-                            <Trash2 className="w-2.5 h-2.5 sm:w-3 sm:h-3 mr-0.5 sm:mr-1" />
-                            <span className="hidden sm:inline">Bin</span>
-                          </Button>
+                            <Button
+                              size="sm"
+                              className="bg-red-500/90 text-white hover:bg-yellow-500 font-semibold px-2 py-1 sm:px-3 sm:py-2 h-6 sm:h-7 text-xs"
+                              onClick={() => handleAddToBin(item.id)}
+                            >
+                              <Trash2 className="w-2.5 h-2.5 sm:w-3 sm:h-3 mr-0.5 sm:mr-1" />
+                              <span className="hidden sm:inline">Bin</span>
+                            </Button>
                           </div>
                           <div className="absolute top-1 right-1 flex space-x-3">
                             <Button
                               size="xs"
                               variant="destructive"
-                              className="bg-red-500/90 text-white !hover:bg-red-600 font-semibold py-1 sm:px-2 sm:py-1 h-6 sm:h-7 text-xs"
+                              className="bg-red-500/90 text-white hover:bg-red-600 font-semibold py-1 sm:px-2 sm:py-1 h-6 sm:h-7 text-xs"
                               onClick={() => handleDeleteFromInventory(item.id)}
                             >
                               <X />
@@ -521,7 +543,7 @@ function InventoryPage({ auth }: InventoryPageProps) {
                           <Button
                             size="sm"
                             variant="destructive"
-                            className="absolute top-4 right-4 bg-white/20 text-white !hover:bg-red-500"
+                            className="absolute top-4 right-4 bg-white/20 text-white hover:bg-red-500"
                             onClick={() => handleRemoveFromBin(item.id)}
                           >
                             <X className="w-4 h-4" />
@@ -791,7 +813,7 @@ function InventoryPage({ auth }: InventoryPageProps) {
                               </div>
                               <div className="absolute bottom-2 left-2 right-2">
                                 <h3 className="font-bold text-white text-sm mb-1">{recipe.name}</h3>
-                                <div className="flex sensations-center justify-between text-xs text-white/90">
+                                <div className="flex items-center justify-between text-xs text-white/90">
                                   <span>🕒 {recipe.time}</span>
                                   <span>{recipe.calories} cal</span>
                                 </div>
