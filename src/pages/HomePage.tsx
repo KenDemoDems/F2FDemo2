@@ -4,6 +4,9 @@ import { motion } from 'motion/react';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '../components/ui/dialog';
+import { Input } from '../components/ui/input';
+import { Label } from '../components/ui/label';
 import { FloatingElement } from '../components/common/FloatingElement';
 import {
   getUserIngredients,
@@ -38,7 +41,16 @@ interface HomePageProps {
 }
 
 function HomePage({ onNavigate, auth, sharedRecipes = [], setSharedRecipes, sharedIngredients = [], setSharedIngredients }: HomePageProps) {
-  const [detectedIngredients, setDetectedIngredients] = useState<string[]>(sharedIngredients);
+  // Convert shared ingredients array to ingredient map with quantities
+  const initializeIngredientMap = (ingredients: string[]) => {
+    const map: Record<string, number> = {};
+    ingredients.forEach(ing => {
+      map[ing] = (map[ing] || 0) + 1;
+    });
+    return map;
+  };
+
+  const [ingredientMap, setIngredientMap] = useState<Record<string, number>>(initializeIngredientMap(sharedIngredients));
   const [generatedRecipes, setGeneratedRecipes] = useState<any[]>(sharedRecipes);
   const [selectedRecipeId, setSelectedRecipeId] = useState<string | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
@@ -46,13 +58,27 @@ function HomePage({ onNavigate, auth, sharedRecipes = [], setSharedRecipes, shar
   const [showUploadOptions, setShowUploadOptions] = useState(false);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [isGeneratingRecipes, setIsGeneratingRecipes] = useState(false);
+  const [showAddIngredientModal, setShowAddIngredientModal] = useState(false);
+  const [newIngredientName, setNewIngredientName] = useState('');
+  const [newIngredientQuantity, setNewIngredientQuantity] = useState('1');
+
+  // Helper to convert ingredient map to array for Firebase/API calls
+  const ingredientMapToArray = (map: Record<string, number>) => {
+    const arr: string[] = [];
+    Object.entries(map).forEach(([name, qty]) => {
+      for (let i = 0; i < qty; i++) {
+        arr.push(name);
+      }
+    });
+    return arr;
+  };
 
   // Sync local state to parent state
   useEffect(() => {
     if (setSharedIngredients) {
-      setSharedIngredients(detectedIngredients);
+      setSharedIngredients(ingredientMapToArray(ingredientMap));
     }
-  }, [detectedIngredients, setSharedIngredients]);
+  }, [ingredientMap, setSharedIngredients]);
 
   useEffect(() => {
     if (setSharedRecipes) {
@@ -81,8 +107,10 @@ function HomePage({ onNavigate, auth, sharedRecipes = [], setSharedRecipes, shar
       console.log('🔍 Newly detected ingredients:', newIngredientNames);
       
       // Merge with existing ingredients (stacking behavior)
-      const mergedIngredients = [...detectedIngredients, ...newIngredientNames];
-      console.log('📦 Total ingredients after merge:', mergedIngredients);
+      const updatedMap = { ...ingredientMap };
+      newIngredientNames.forEach(name => {
+        updatedMap[name] = (updatedMap[name] || 0) + 1;
+      });
       
       const firebaseIngredients: Ingredient[] = visionResult.ingredients.map((ing: DetectedIngredient) => ({
         id: '',
@@ -98,9 +126,9 @@ function HomePage({ onNavigate, auth, sharedRecipes = [], setSharedRecipes, shar
       await updateInventory(auth.user.uid, newIngredientNames);
       
       // Update local state with merged ingredients
-      setDetectedIngredients(mergedIngredients);
+      setIngredientMap(updatedMap);
       
-      console.log('✅ Successfully detected and merged ingredients. Total:', mergedIngredients.length);
+      console.log('✅ Successfully detected and merged ingredients. Total unique:', Object.keys(updatedMap).length);
       console.log('💡 Click "Generate Recipe" button to create recipes from your ingredients');
       setShowUploadOptions(false);
       
@@ -258,14 +286,14 @@ function HomePage({ onNavigate, auth, sharedRecipes = [], setSharedRecipes, shar
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Ingredients Found:</h2>
               <Badge className="bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-500/30">
-                {detectedIngredients.length} items detected
+                {Object.keys(ingredientMap).length} unique items
               </Badge>
             </div>
-            {detectedIngredients.length === 0 ? (
+            {Object.keys(ingredientMap).length === 0 ? (
               <p className="text-gray-500 text-center py-4">No ingredients detected yet. Upload a photo to get started!</p>
             ) : (
               <div className="flex flex-wrap gap-3 mb-6">
-                {detectedIngredients.map((ingredient, index) => (
+                {Object.entries(ingredientMap).map(([ingredient, quantity], index) => (
                   <motion.div
                     key={ingredient}
                     initial={{ opacity: 0, scale: 0.8 }}
@@ -276,7 +304,7 @@ function HomePage({ onNavigate, auth, sharedRecipes = [], setSharedRecipes, shar
                     <Badge
                       className="bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 px-4 py-2 text-sm hover:bg-emerald-200 dark:hover:bg-emerald-500/30 transition-colors cursor-pointer transform hover:scale-105 border border-emerald-200 dark:border-emerald-500/30"
                     >
-                      {ingredient}
+                      {ingredient} {quantity > 1 && <span className="font-bold ml-1">×{quantity}</span>}
                     </Badge>
                     <button
                       className="ml-1 px-2 py-0.5 text-xs rounded bg-red-100 text-red-700 hover:bg-red-200 transition"
@@ -287,9 +315,14 @@ function HomePage({ onNavigate, auth, sharedRecipes = [], setSharedRecipes, shar
                           return;
                         }
                         try {
-                          const newIngredients = detectedIngredients.filter((ing) => ing !== ingredient);
-                          setDetectedIngredients(newIngredients);
-                          await updateInventory(auth.user.uid, newIngredients);
+                          const updatedMap = { ...ingredientMap };
+                          delete updatedMap[ingredient];
+                          setIngredientMap(updatedMap);
+                          
+                          // Update Firebase with new ingredient list
+                          const newIngredientArray = ingredientMapToArray(updatedMap);
+                          await updateInventory(auth.user.uid, newIngredientArray);
+                          
                           console.log(`✅ Removed ingredient: ${ingredient}`);
                         } catch (error) {
                           console.error(`❌ Error removing ingredient ${ingredient}:`, error);
@@ -303,38 +336,7 @@ function HomePage({ onNavigate, auth, sharedRecipes = [], setSharedRecipes, shar
                 <Badge
                   variant="outline"
                   className="border-emerald-200 dark:border-emerald-500/30 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 cursor-pointer"
-                  onClick={async () => {
-                    const ingredientName = prompt('Enter ingredient name:');
-                    if (ingredientName && auth.user?.uid) {
-                      try {
-                        await addManualIngredient(auth.user.uid, ingredientName);
-                        const newIngredients = [...detectedIngredients, ingredientName];
-                        setDetectedIngredients(newIngredients);
-                        await updateInventory(auth.user.uid, newIngredients);
-                        const generatedRecipesLocal = (await generateRecipesWithImages(newIngredients)).map((recipe, index) => ({
-                          ...recipe,
-                          id: `recipe-${index}`,
-                          createdAt: new Date(),
-                        }));
-                        await saveGeneratedRecipes(auth.user.uid, generatedRecipesLocal);
-                        const updatedRecipesResult = await getUserRecipes(auth.user.uid);
-                        if (!updatedRecipesResult.error) {
-                          const recipes = updatedRecipesResult.recipes.map((recipe, index) => ({
-                            ...recipe,
-                            id: recipe.id || `recipe-${index}`,
-                          }));
-                          setGeneratedRecipes(recipes);
-                          if (setSharedRecipes) setSharedRecipes(recipes);
-                          if (recipes.length > 0) {
-                            setSelectedRecipeId(recipes[0].id);
-                          }
-                        }
-                        console.log('✅ Manual ingredient added:', ingredientName);
-                      } catch (error) {
-                        console.error('❌ Failed to add ingredient:', error);
-                      }
-                    }
-                  }}
+                  onClick={() => setShowAddIngredientModal(true)}
                 >
                   + Add More
                 </Badge>
@@ -355,7 +357,8 @@ function HomePage({ onNavigate, auth, sharedRecipes = [], setSharedRecipes, shar
                   setIsGeneratingRecipes(true);
                   try {
                     const baseIngredients = ['oil', 'salt', 'pepper'];
-                    const allIngredients = Array.from(new Set([...detectedIngredients, ...baseIngredients]));
+                    const userIngredients = ingredientMapToArray(ingredientMap);
+                    const allIngredients = Array.from(new Set([...userIngredients, ...baseIngredients]));
                     if (allIngredients.length === 0) {
                       console.warn('No ingredients available to generate recipes');
                       return;
@@ -391,7 +394,7 @@ function HomePage({ onNavigate, auth, sharedRecipes = [], setSharedRecipes, shar
                     setIsGeneratingRecipes(false);
                   }
                 }}
-                disabled={(detectedIngredients.length === 0 && !auth.user) || isGeneratingRecipes}
+                disabled={(Object.keys(ingredientMap).length === 0 && !auth.user) || isGeneratingRecipes}
               >
                 {isGeneratingRecipes ? (
                   <>
@@ -655,6 +658,94 @@ function HomePage({ onNavigate, auth, sharedRecipes = [], setSharedRecipes, shar
           )}
         </div>
       </div>
+
+      {/* Add Ingredient Modal */}
+      <Dialog open={showAddIngredientModal} onOpenChange={setShowAddIngredientModal}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-2xl font-bold text-emerald-700">Add Ingredient</DialogTitle>
+            <DialogDescription>
+              Add a new ingredient to your list with quantity.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="ingredient-name" className="text-sm font-medium">
+                Ingredient Name
+              </Label>
+              <Input
+                id="ingredient-name"
+                placeholder="e.g., Tomato, Onion, Garlic..."
+                value={newIngredientName}
+                onChange={(e) => setNewIngredientName(e.target.value)}
+                className="w-full"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="ingredient-quantity" className="text-sm font-medium">
+                Quantity
+              </Label>
+              <Input
+                id="ingredient-quantity"
+                type="number"
+                min="1"
+                placeholder="1"
+                value={newIngredientQuantity}
+                onChange={(e) => setNewIngredientQuantity(e.target.value)}
+                className="w-full"
+              />
+            </div>
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowAddIngredientModal(false);
+                setNewIngredientName('');
+                setNewIngredientQuantity('1');
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white"
+              onClick={async () => {
+                if (newIngredientName.trim() && auth.user?.uid) {
+                  try {
+                    const quantity = parseInt(newIngredientQuantity) || 1;
+                    const ingredientName = newIngredientName.trim();
+                    
+                    // Add ingredient to Firebase
+                    await addManualIngredient(auth.user.uid, ingredientName);
+                    
+                    // Add to local state (update quantity)
+                    const updatedMap = { ...ingredientMap };
+                    updatedMap[ingredientName] = (updatedMap[ingredientName] || 0) + quantity;
+                    setIngredientMap(updatedMap);
+                    
+                    // Update inventory with quantity
+                    const ingredientsToAdd = Array(quantity).fill(ingredientName);
+                    await updateInventory(auth.user.uid, ingredientsToAdd);
+                    
+                    console.log(`✅ Manual ingredient added: ${ingredientName} (x${quantity})`);
+                    console.log('💡 Click "Generate Recipe" button to create recipes with your ingredients');
+                    
+                    // Reset and close modal
+                    setShowAddIngredientModal(false);
+                    setNewIngredientName('');
+                    setNewIngredientQuantity('1');
+                  } catch (error) {
+                    console.error('❌ Failed to add ingredient:', error);
+                  }
+                }
+              }}
+              disabled={!newIngredientName.trim()}
+            >
+              Add Ingredient
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
