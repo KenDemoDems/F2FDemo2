@@ -463,7 +463,7 @@ function MealPlanPage() {
                                     size="sm"
                                     variant="destructive"
                                     className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity h-4 w-4 sm:h-6 sm:w-6 p-0"
-                                    onClick={(e) => {
+                                    onClick={(e: React.MouseEvent) => {
                                       e.stopPropagation();
                                       handleRecipeRemove(recipe.id);
                                     }}
@@ -505,7 +505,7 @@ function MealPlanPage() {
                                     size="sm"
                                     variant="destructive"
                                     className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity h-4 w-4 sm:h-6 sm:w-6 p-0"
-                                    onClick={(e) => {
+                                    onClick={(e: React.MouseEvent) => {
                                       e.stopPropagation();
                                       handleRecipeRemove(recipe.id);
                                     }}
@@ -557,7 +557,7 @@ function MealPlanPage() {
                                     size="sm"
                                     variant="destructive"
                                     className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity h-4 w-4 sm:h-6 sm:w-6 p-0"
-                                    onClick={(e) => {
+                                    onClick={(e: React.MouseEvent) => {
                                       e.stopPropagation();
                                       handleRecipeRemove(recipe.id);
                                     }}
@@ -599,7 +599,7 @@ function MealPlanPage() {
                                     size="sm"
                                     variant="destructive"
                                     className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity h-4 w-4 sm:h-6 sm:w-6 p-0"
-                                    onClick={(e) => {
+                                    onClick={(e: React.MouseEvent) => {
                                       e.stopPropagation();
                                       handleRecipeRemove(recipe.id);
                                     }}

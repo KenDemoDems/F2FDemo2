@@ -342,15 +342,14 @@ function InventoryPage({ auth }: InventoryPageProps) {
       // Save to Firebase and assign unique IDs
       const savedRecipes: Recipe[] = [];
       for (const recipe of generatedRecipes) {
-        const { id, createdAt, ...recipeData } = recipe; // Remove any temporary id and createdAt
         const docRef = await addDoc(collection(db, 'generatedRecipes'), {
-          ...recipeData,
+          ...recipe,
           userId: auth.user?.uid,
           createdAt: Timestamp.now(),
         });
         await updateDoc(docRef, { id: docRef.id }); // Store the unique ID in the document
         savedRecipes.push({
-          ...recipeData,
+          ...recipe,
           id: docRef.id,
           createdAt: new Date(),
         } as Recipe);
@@ -547,10 +546,6 @@ function InventoryPage({ auth }: InventoryPageProps) {
                             <Trash2 className="w-2.5 h-2.5 sm:w-3 sm:h-3 mr-0.5 sm:mr-1" />
                             <span className="hidden sm:inline">Bin</span>
                           </button>
-                          </div>
-                          <div className="absolute top-1 right-1 flex space-x-3">
-                            <button
-                              className="inline-flex items-center justify-center bg-blue-500 text-white hover:bg-blue-700 hover:scale-110 transition-all duration-300 font-semibold px-2 py-1 h-6 sm:h-7 text-xs shadow-md rounded-md border-0"
                           </div>
                           <div className="absolute top-1 right-1 flex space-x-1">
                             <button

@@ -375,9 +375,8 @@ function HomePage({ onNavigate, auth, sharedRecipes = [], setSharedRecipes, shar
                     }
                     const savedRecipes = [];
                     for (const recipe of recipeResult) {
-                      const { id, ...recipeData } = recipe;
                       const docRef = await addDoc(collection(db, 'generatedRecipes'), {
-                        ...recipeData,
+                        ...recipe,
                         userId: auth.user?.uid,
                         createdAt: Timestamp.now(),
                       });
