@@ -447,6 +447,38 @@ export const saveLeftoverRecipes = async (userId: string, recipes: Recipe[]) => 
   }
 };
 
+export const getUserLeftoverRecipes = async (userId: string) => {
+  try {
+    if (isDemoMode) {
+      console.log("🔧 Demo mode: Returning demo leftover recipes for", userId);
+      return { recipes: [], error: null };
+    }
+
+    const q = query(
+      collection(db, 'leftoverRecipes'),
+      where('userId', '==', userId),
+      orderBy('createdAt', 'desc'),
+      limit(25)
+    );
+
+    const querySnapshot = await getDocs(q);
+    const recipes: Recipe[] = [];
+
+    querySnapshot.forEach((doc) => {
+      const data = doc.data();
+      recipes.push({
+        id: doc.id,
+        ...data,
+        createdAt: data.createdAt.toDate()
+      } as Recipe);
+    });
+
+    return { recipes, error: null };
+  } catch (error: any) {
+    return { recipes: [], error: error.message };
+  }
+};
+
 // Firestore Functions - Inventory
 export const updateInventory = async (userId: string, ingredients: string[]) => {
   try {
