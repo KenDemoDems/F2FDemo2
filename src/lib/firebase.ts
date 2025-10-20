@@ -494,30 +494,56 @@ export const updateInventory = async (userId: string, ingredients: string[]) => 
     );
 
     const querySnapshot = await getDocs(q);
-    const existingItems = new Set();
+    const existingItemsMap = new Map<string, { id: string; quantity: number }>();
 
     querySnapshot.forEach((doc) => {
-      existingItems.add(doc.data().name.toLowerCase());
+      const data = doc.data();
+      existingItemsMap.set(data.name.toLowerCase(), {
+        id: doc.id,
+        quantity: data.quantity || 1
+      });
     });
 
-    // Add new ingredients to inventory
-    const newItems = ingredients.filter(ingredient =>
-      !existingItems.has(ingredient.toLowerCase())
-    );
+    // Count occurrences of each ingredient in the new upload
+    const ingredientCounts = new Map<string, number>();
+    ingredients.forEach(ingredient => {
+      const lowerName = ingredient.toLowerCase();
+      ingredientCounts.set(lowerName, (ingredientCounts.get(lowerName) || 0) + 1);
+    });
 
-    const batch = newItems.map(ingredient =>
-      addDoc(collection(db, 'inventory'), {
-        userId,
-        name: ingredient,
-        quantity: 1,
-        unit: 'piece',
-        addedDate: Timestamp.now(),
-        category: 'general',
-        fromDetection: true
-      })
-    );
+    const updates: Promise<any>[] = [];
 
-    await Promise.all(batch);
+    ingredientCounts.forEach((count, ingredientLower) => {
+      const existing = existingItemsMap.get(ingredientLower);
+      
+      if (existing) {
+        // Update existing item - increment quantity (stacking)
+        updates.push(
+          updateDoc(doc(db, 'inventory', existing.id), {
+            quantity: existing.quantity + count,
+            addedDate: Timestamp.now() // Update timestamp
+          })
+        );
+        console.log(`✅ Stacking: ${ingredientLower} quantity ${existing.quantity} → ${existing.quantity + count}`);
+      } else {
+        // Add new item
+        const originalName = ingredients.find(i => i.toLowerCase() === ingredientLower) || ingredientLower;
+        updates.push(
+          addDoc(collection(db, 'inventory'), {
+            userId,
+            name: originalName,
+            quantity: count,
+            unit: 'piece',
+            addedDate: Timestamp.now(),
+            category: 'general',
+            fromDetection: true
+          })
+        );
+        console.log(`✅ Adding new: ${originalName} with quantity ${count}`);
+      }
+    });
+
+    await Promise.all(updates);
     return { error: null };
   } catch (error: any) {
     return { error: error.message };

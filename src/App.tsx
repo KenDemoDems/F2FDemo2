@@ -201,7 +201,7 @@ export default function App() {
           />
         )}
         {currentPage === 'inventory' && <InventoryPage auth={auth} />}
-        {currentPage === 'meal-plan' && <MealPlanPage recipes={sharedRecipes} />}
+        {currentPage === 'meal-plan' && <MealPlanPage />}
         {currentPage === 'about' && <AboutPage auth={auth} onNavigate={handleNavigate} />}
         <Footer />
       </div>

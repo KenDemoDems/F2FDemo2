@@ -272,11 +272,19 @@ function InventoryPage({ auth }: InventoryPageProps) {
       const { getEnvVar } = await import('../lib/env');
       const apiKey = getEnvVar('VITE_OPENAI_API_KEY', '');
       const generatedRecipes = await generateRecipesSmart(ingredientNames, apiKey);
-      setLeftoverRecipes(generatedRecipes);
+      
+      // Add id and createdAt to recipes before saving
+      const recipesWithIds = generatedRecipes.map((recipe, index) => ({
+        ...recipe,
+        id: `leftover-${Date.now()}-${index}`,
+        createdAt: new Date()
+      }));
+      
+      setLeftoverRecipes(recipesWithIds);
 
       // Save generated recipes to leftoverRecipes collection
       if (auth.user?.uid) {
-        const saveResult = await saveLeftoverRecipes(auth.user.uid, generatedRecipes);
+        const saveResult = await saveLeftoverRecipes(auth.user.uid, recipesWithIds);
         if (saveResult.error) {
           console.error('❌ Error saving leftover recipes:', saveResult.error);
           setError('Failed to save leftover recipes');
@@ -286,10 +294,10 @@ function InventoryPage({ auth }: InventoryPageProps) {
       }
 
       if (auth.user?.email) {
-        await sendRecipeSuggestions(auth.user.email, generatedRecipes.slice(0, 3), ingredientNames);
+        await sendRecipeSuggestions(auth.user.email, recipesWithIds.slice(0, 3), ingredientNames);
       }
 
-      console.log('✅ Successfully generated leftover recipes:', generatedRecipes.length);
+      console.log('✅ Successfully generated leftover recipes:', recipesWithIds.length);
     } catch (error) {
       console.error('❌ Error generating leftover recipes:', error);
       setError('Failed to generate leftover recipes');
