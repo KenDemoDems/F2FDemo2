@@ -1,10 +1,11 @@
+// MealPlanPage.tsx
 import React, { useState, useEffect } from 'react';
 import { Calendar, Clock, ChefHat, Apple, Plus, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogClose } from '../components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../components/ui/dialog';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs';
 import { FloatingElement } from '../components/common/FloatingElement';
 import imgImage6 from "../assets/2780e8169c075695ce0c5190b09759e545a810b6.png";
@@ -48,17 +49,6 @@ function getCreatedAtTime(createdAt: Date | Timestamp): number {
   return createdAt instanceof Timestamp ? createdAt.toDate().getTime() : createdAt.getTime();
 }
 
-function formatTimeAgo(createdAt: Date | Timestamp): string {
-  const now = Date.now();
-  const time = getCreatedAtTime(createdAt);
-  const diffMinutes = Math.floor((now - time) / (1000 * 60));
-  if (diffMinutes < 60) return `${diffMinutes} min${diffMinutes !== 1 ? 's' : ''} ago`;
-  const diffHours = Math.floor(diffMinutes / 60);
-  if (diffHours < 24) return `${diffHours} hr${diffHours !== 1 ? 's' : ''} ago`;
-  const diffDays = Math.floor(diffHours / 24);
-  return `${diffDays} day${diffDays !== 1 ? 's' : ''} ago`;
-}
-
 function MealPlanPage() {
   const [selectedMeal, setSelectedMeal] = useState<{ day: string; type: string; meal: any } | null>(null);
   const [mealPlan, setMealPlan] = useState<MealPlanData>(
@@ -85,7 +75,6 @@ function MealPlanPage() {
 
         if (!user) {
           // Fallback to hardcoded recipes if no user
-          const now = Date.now();
           setAvailableRecipes([
             {
               id: '1',
@@ -97,7 +86,7 @@ function MealPlanPage() {
               ingredients: [],
               instructions: [],
               nutritionBenefits: '',
-              createdAt: new Date(now - 120 * 60 * 1000), // 2 hours ago
+              createdAt: new Date(),
               usedIngredients: []
             },
             {
@@ -110,7 +99,7 @@ function MealPlanPage() {
               ingredients: [],
               instructions: [],
               nutritionBenefits: '',
-              createdAt: new Date(now - 30 * 60 * 1000), // 30 minutes ago
+              createdAt: new Date(),
               usedIngredients: []
             },
             {
@@ -123,7 +112,7 @@ function MealPlanPage() {
               ingredients: [],
               instructions: [],
               nutritionBenefits: '',
-              createdAt: new Date(now - 180 * 60 * 1000), // 3 hours ago
+              createdAt: new Date(),
               usedIngredients: []
             }
           ]);
@@ -247,8 +236,8 @@ function MealPlanPage() {
   };
 
   const now = Date.now();
-  const recentRecipes = availableRecipes.filter(r => now - getCreatedAtTime(r.createdAt) <= 60 * 60 * 1000); // Recipes from last 60 minutes
-  const previousRecipes = availableRecipes.filter(r => now - getCreatedAtTime(r.createdAt) > 60 * 60 * 1000); // Older recipes
+  const recentRecipes = availableRecipes.filter(r => now - getCreatedAtTime(r.createdAt) < 60 * 60 * 1000);
+  const previousRecipes = availableRecipes.filter(r => now - getCreatedAtTime(r.createdAt) >= 60 * 60 * 1000);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-teal-50 to-green-50 relative overflow-hidden">
@@ -375,21 +364,23 @@ function MealPlanPage() {
         <AnimatePresence>
           {selectedMeal && (
             <Dialog open={!!selectedMeal} onOpenChange={() => setSelectedMeal(null)}>
-              <DialogContent className="sm:max-w-md rounded-lg p-6">
+              <DialogContent className="w-full max-w-md mx-auto my-8 p-4 rounded-lg max-h-[80vh] overflow-y-auto">
                 <motion.div
                   initial={{ opacity: 0, scale: 0.95 }}
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.95 }}
                   transition={{ duration: 0.2 }}
                 >
-                  <DialogClose asChild>
-                    <Button variant="ghost" className="absolute right-4 top-4 rounded-full h-8 w-8 p-0 bg-gray-100 hover:bg-gray-200 transition-colors">
+                  <DialogHeader>
+                    <Button
+                      variant="ghost"
+                      className="absolute right-2 top-2 h-8 w-8 p-0 bg-gray-100 hover:bg-gray-200 transition-colors rounded-full"
+                      onClick={() => setSelectedMeal(null)}
+                    >
                       <X className="h-4 w-4 text-gray-600" />
                       <span className="sr-only">Close</span>
                     </Button>
-                  </DialogClose>
-                  <DialogHeader>
-                    <DialogTitle className="text-xl font-bold text-gray-900">
+                    <DialogTitle className="text-lg font-bold text-gray-900 pr-8">
                       Select Recipe for {selectedMeal.day} {selectedMeal.type}
                     </DialogTitle>
                     <DialogDescription className="text-sm text-gray-600">
@@ -413,9 +404,9 @@ function MealPlanPage() {
                       </TabsTrigger>
                     </TabsList>
                     <TabsContent value="recent">
-                      <div className="grid grid-cols-3 gap-4 overflow-y-auto max-h-[50vh] mt-4 pr-2">
+                      <div className="grid grid-cols-2 gap-3 overflow-y-auto max-h-[40vh] mt-3 pr-1">
                         {recentRecipes.length === 0 ? (
-                          <p className="text-gray-500 text-center col-span-3 text-sm">No recent recipes available.</p>
+                          <p className="text-gray-500 text-center col-span-2 text-sm">No recent recipes available.</p>
                         ) : (
                           recentRecipes.map((recipe) => (
                             <motion.div
@@ -425,17 +416,17 @@ function MealPlanPage() {
                               transition={{ duration: 0.2 }}
                             >
                               <Card
-                                className="cursor-pointer hover:shadow-lg transition-all duration-300 border-2 border-gray-200 hover:border-emerald-400 rounded-md"
+                                className="cursor-pointer hover:shadow-md transition-all duration-200 border-2 border-gray-200 hover:border-emerald-400 rounded-md"
                                 onClick={() => handleMealAssign(selectedMeal.day, selectedMeal.type, recipe)}
                               >
-                                <CardContent className="p-3">
+                                <CardContent className="p-2">
                                   <img
                                     src={recipe.image || imgImage6}
                                     alt={recipe.name}
                                     loading="lazy"
-                                    className="w-full h-16 object-cover rounded-md mb-2"
+                                    className="w-full h-12 object-cover rounded-md mb-1"
                                   />
-                                  <h4 className="font-medium text-sm text-gray-900 truncate">{recipe.name}</h4>
+                                  <h4 className="font-medium text-xs text-gray-900 truncate">{recipe.name}</h4>
                                   <p className="text-xs text-gray-600 flex items-center gap-1">
                                     <Clock className="w-3 h-3" />
                                     {recipe.time}
@@ -451,39 +442,34 @@ function MealPlanPage() {
                       </div>
                     </TabsContent>
                     <TabsContent value="previous">
-                      <div className="grid grid-cols-3 gap-4 overflow-y-auto max-h-[50vh] mt-4 pr-2">
+                      <div className="grid grid-cols-2 gap-3 overflow-y-auto max-h-[40vh] mt-3 pr-1">
                         {previousRecipes.length === 0 ? (
-                          <p className="text-gray-500 text-center col-span-3 text-sm font-medium">
-                            No previous recipes available.
-                          </p>
+                          <p className="text-gray-500 text-center col-span-2 text-sm">No previous recipes available.</p>
                         ) : (
                           previousRecipes.map((recipe) => (
                             <motion.div
                               key={recipe.id}
                               initial={{ opacity: 0, y: 10 }}
                               animate={{ opacity: 1, y: 0 }}
-                              transition={{ duration: 0.3 }}
+                              transition={{ duration: 0.2 }}
                             >
                               <Card
-                                className="cursor-pointer hover:shadow-xl hover:bg-teal-50/50 transition-all duration-300 border-2 border-gray-200 hover:border-teal-400 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400"
+                                className="cursor-pointer hover:shadow-md transition-all duration-200 border-2 border-gray-200 hover:border-emerald-400 rounded-md"
                                 onClick={() => handleMealAssign(selectedMeal.day, selectedMeal.type, recipe)}
-                                role="button"
-                                aria-label={`Select recipe: ${recipe.name}`}
                               >
-                                <CardContent className="p-4">
+                                <CardContent className="p-2">
                                   <img
                                     src={recipe.image || imgImage6}
                                     alt={recipe.name}
                                     loading="lazy"
-                                    className="w-full h-20 object-cover rounded-md mb-3"
+                                    className="w-full h-12 object-cover rounded-md mb-1"
                                   />
-                                  <h4 className="font-semibold text-sm text-gray-900 truncate">{recipe.name}</h4>
-                                  <p className="text-xs text-gray-700 flex items-center gap-1 mb-2">
-                                    <Clock className="w-3 h-3 text-teal-600" />
+                                  <h4 className="font-medium text-xs text-gray-900 truncate">{recipe.name}</h4>
+                                  <p className="text-xs text-gray-600 flex items-center gap-1">
+                                    <Clock className="w-3 h-3" />
                                     {recipe.time}
                                   </p>
-                                  <p className="text-xs text-gray-500 italic mb-2">{formatTimeAgo(recipe.createdAt)}</p>
-                                  <Badge className="bg-teal-100 text-teal-700 text-xs font-medium">
+                                  <Badge className="bg-emerald-100 text-emerald-700 text-xs mt-1">
                                     {recipe.difficulty}
                                   </Badge>
                                 </CardContent>
