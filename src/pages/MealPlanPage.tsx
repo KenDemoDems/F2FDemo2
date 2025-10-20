@@ -1,87 +1,242 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Calendar, Clock, ChefHat, Apple, Plus, X } from 'lucide-react';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogClose } from '../components/ui/dialog';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs';
 import { FloatingElement } from '../components/common/FloatingElement';
 import imgImage6 from "../assets/2780e8169c075695ce0c5190b09759e545a810b6.png";
 import imgImage7 from "../assets/2e5eaf280bc2a4732907cd4c7a025b119a66136f.png";
 import imgImage8 from "../assets/2e5eaf280bc2a4732907cd4c7a025b119a66136f.png";
+import { auth, db } from '../lib/firebase';
+import { getUserRecipes, getUserLeftoverRecipes, getUserMealPlan, Recipe, MealPlanEntry } from '../lib/firebase';
+import { addDoc, collection, deleteDoc, doc, Timestamp } from 'firebase/firestore';
 
-interface MealRecipe {
-  name: string;
-  image: string;
-  time: string;
-  difficulty?: string;
+interface AssignedRecipe extends Recipe {
+  entryId?: string;
 }
 
 interface MealPlanData {
   [day: string]: {
-    Breakfast: MealRecipe | null;
-    Lunch: MealRecipe | null;
-    Dinner: MealRecipe | null;
+    Breakfast: AssignedRecipe | null;
+    Lunch: AssignedRecipe | null;
+    Dinner: AssignedRecipe | null;
   };
 }
 
-interface MealPlanPageProps {
-  recipes?: any[];
-}
+const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+const mealTypes = ['Breakfast', 'Lunch', 'Dinner'];
 
-function MealPlanPage({ recipes = [] }: MealPlanPageProps) {
-  const [selectedMeal, setSelectedMeal] = useState<{ day: string; type: string; meal: any } | null>(null);
-
-  console.log('MealPlanPage: received recipes count =', recipes.length);
-
-  const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-  const mealTypes = ['Breakfast', 'Lunch', 'Dinner'];
-
-  const [mealPlan, setMealPlan] = useState<MealPlanData>({
-    Monday: {
-      Breakfast: { name: 'Cheese Omelette', image: imgImage8, time: '12 min' },
-      Lunch: null,
-      Dinner: { name: 'Egg Bowl', image: imgImage6, time: '15 min' }
-    },
-    Tuesday: {
-      Breakfast: null,
-      Lunch: { name: 'Fresh Salad', image: imgImage7, time: '10 min' },
-      Dinner: null
-    },
-    Wednesday: { Breakfast: null, Lunch: null, Dinner: null },
-    Thursday: { Breakfast: null, Lunch: null, Dinner: null },
-    Friday: { Breakfast: null, Lunch: null, Dinner: null },
-    Saturday: { Breakfast: null, Lunch: null, Dinner: null },
-    Sunday: { Breakfast: null, Lunch: null, Dinner: null }
+function getWeekDates() {
+  const today = new Date();
+  const dayOfWeek = today.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
+  const diffToMon = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+  const monday = new Date(today.getFullYear(), today.getMonth(), today.getDate() + diffToMon);
+  const dates: { [key: string]: Date } = {};
+  daysOfWeek.forEach((day, idx) => {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + idx);
+    dates[day] = d;
   });
+  const sunday = dates['Sunday'];
+  return { start: monday, end: sunday, dates };
+}
 
-  // Use recipes from props, fallback to hardcoded ones if empty
-  const availableRecipes = recipes.length > 0
-    ? recipes.map(recipe => ({
-        name: recipe.name,
-        image: recipe.image || imgImage6,
-        time: recipe.time || '20 min',
-        difficulty: recipe.difficulty || 'Medium'
-      }))
-    : [
-        { name: 'Egg Bowl', image: imgImage6, time: '15 min', difficulty: 'Easy' },
-        { name: 'Fresh Salad', image: imgImage7, time: '10 min', difficulty: 'Easy' },
-        { name: 'Cheese Omelette', image: imgImage8, time: '12 min', difficulty: 'Medium' }
-      ];
+function getCreatedAtTime(createdAt: Date | Timestamp): number {
+  return createdAt instanceof Timestamp ? createdAt.toDate().getTime() : createdAt.getTime();
+}
 
-  const handleMealAssign = (day: string, mealType: string, recipe: MealRecipe) => {
-    setMealPlan(prev => ({
-      ...prev,
-      [day]: {
-        ...prev[day],
-        [mealType]: recipe
+function formatTimeAgo(createdAt: Date | Timestamp): string {
+  const now = Date.now();
+  const time = getCreatedAtTime(createdAt);
+  const diffMinutes = Math.floor((now - time) / (1000 * 60));
+  if (diffMinutes < 60) return `${diffMinutes} min${diffMinutes !== 1 ? 's' : ''} ago`;
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) return `${diffHours} hr${diffHours !== 1 ? 's' : ''} ago`;
+  const diffDays = Math.floor(diffHours / 24);
+  return `${diffDays} day${diffDays !== 1 ? 's' : ''} ago`;
+}
+
+function MealPlanPage() {
+  const [selectedMeal, setSelectedMeal] = useState<{ day: string; type: string; meal: any } | null>(null);
+  const [mealPlan, setMealPlan] = useState<MealPlanData>(
+    daysOfWeek.reduce((acc, day) => ({ ...acc, [day]: { Breakfast: null, Lunch: null, Dinner: null } }), {})
+  );
+  const [availableRecipes, setAvailableRecipes] = useState<Recipe[]>([]);
+  const [weekDates, setWeekDates] = useState<{ [key: string]: Date }>({});
+  const [totalCookTime, setTotalCookTime] = useState(0);
+  const [plannedMeals, setPlannedMeals] = useState(0);
+  const [ingredientsNeeded, setIngredientsNeeded] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      setLoading(true);
+      setError(null);
+      const user = auth.currentUser;
+
+      try {
+        // Fetch week dates
+        const { start, end, dates } = getWeekDates();
+        setWeekDates(dates);
+
+        if (!user) {
+          // Fallback to hardcoded recipes if no user
+          const now = Date.now();
+          setAvailableRecipes([
+            {
+              id: '1',
+              name: 'Egg Bowl',
+              image: imgImage6,
+              time: '15 min',
+              difficulty: 'Easy',
+              calories: 0,
+              ingredients: [],
+              instructions: [],
+              nutritionBenefits: '',
+              createdAt: new Date(now - 120 * 60 * 1000), // 2 hours ago
+              usedIngredients: []
+            },
+            {
+              id: '2',
+              name: 'Fresh Salad',
+              image: imgImage7,
+              time: '10 min',
+              difficulty: 'Easy',
+              calories: 0,
+              ingredients: [],
+              instructions: [],
+              nutritionBenefits: '',
+              createdAt: new Date(now - 30 * 60 * 1000), // 30 minutes ago
+              usedIngredients: []
+            },
+            {
+              id: '3',
+              name: 'Cheese Omelette',
+              image: imgImage8,
+              time: '12 min',
+              difficulty: 'Medium',
+              calories: 0,
+              ingredients: [],
+              instructions: [],
+              nutritionBenefits: '',
+              createdAt: new Date(now - 180 * 60 * 1000), // 3 hours ago
+              usedIngredients: []
+            }
+          ]);
+          setMealPlan(daysOfWeek.reduce((acc, day) => ({ ...acc, [day]: { Breakfast: null, Lunch: null, Dinner: null } }), {}));
+          setLoading(false);
+          return;
+        }
+
+        // Fetch generated and leftover recipes
+        const [genRecipesResult, leftRecipesResult] = await Promise.all([
+          getUserRecipes(user.uid),
+          getUserLeftoverRecipes(user.uid)
+        ]);
+
+        if (genRecipesResult.error || leftRecipesResult.error) {
+          setError('Failed to load recipes: ' + (genRecipesResult.error || leftRecipesResult.error));
+          setAvailableRecipes([]);
+        } else {
+          const combinedRecipes = [
+            ...(genRecipesResult.recipes || []),
+            ...(leftRecipesResult.recipes || [])
+          ].sort((a, b) => getCreatedAtTime(b.createdAt) - getCreatedAtTime(a.createdAt));
+          setAvailableRecipes(combinedRecipes);
+        }
+
+        // Fetch meal plan
+        const { mealPlan: entries, error: mealPlanError } = await getUserMealPlan(user.uid, start, end);
+        if (mealPlanError) {
+          setError('Failed to load meal plan: ' + mealPlanError);
+        } else {
+          const newPlan = daysOfWeek.reduce((acc, day) => ({ ...acc, [day]: { Breakfast: null, Lunch: null, Dinner: null } }), {}) as MealPlanData;
+          entries.forEach((entry: MealPlanEntry) => {
+            newPlan[entry.day][entry.mealType] = {
+              ...entry.recipe,
+              entryId: entry.id
+            };
+          });
+          setMealPlan(newPlan);
+        }
+      } catch (err: any) {
+        setError('Error loading data: ' + err.message);
+      } finally {
+        setLoading(false);
       }
-    }));
+    };
+
+    fetchData();
+  }, []);
+
+  useEffect(() => {
+    let totalTime = 0;
+    let planned = 0;
+    const ingredientsSet = new Set<string>();
+    daysOfWeek.forEach(day => {
+      mealTypes.forEach(type => {
+        const meal = mealPlan[day][type as keyof typeof mealPlan[typeof day]];
+        if (meal) {
+          planned++;
+          const timeMatch = meal.time.match(/(\d+)\s*min/);
+          const timeNum = timeMatch ? parseInt(timeMatch[1]) : 0;
+          totalTime += timeNum;
+          meal.ingredients.forEach(ing => ingredientsSet.add(ing));
+        }
+      });
+    });
+    setTotalCookTime(totalTime);
+    setPlannedMeals(planned);
+    setIngredientsNeeded(ingredientsSet.size);
+  }, [mealPlan]);
+
+  const handleMealAssign = async (day: string, mealType: string, recipe: Recipe) => {
     setSelectedMeal(null);
-    console.log('MealPlan: assigned', recipe?.name, 'to', day, mealType);
+    const userId = auth.currentUser?.uid;
+    if (!userId) {
+      setError('Please log in to assign meals');
+      return;
+    }
+
+    try {
+      const scheduledDate = weekDates[day];
+      const docRef = await addDoc(collection(db, 'mealPlan'), {
+        userId,
+        day,
+        mealType,
+        recipe,
+        scheduledDate: Timestamp.fromDate(scheduledDate)
+      });
+
+      setMealPlan(prev => ({
+        ...prev,
+        [day]: {
+          ...prev[day],
+          [mealType]: { ...recipe, entryId: docRef.id }
+        }
+      }));
+    } catch (error: any) {
+      setError('Failed to assign meal: ' + error.message);
+      console.error('Assign meal error:', error);
+    }
   };
 
-  const handleMealRemove = (day: string, mealType: string) => {
+  const handleMealRemove = async (day: string, mealType: string) => {
+    const entryId = mealPlan[day][mealType as keyof typeof mealPlan[typeof day]]?.entryId;
+    if (entryId) {
+      try {
+        await deleteDoc(doc(db, 'mealPlan', entryId));
+      } catch (error: any) {
+        setError('Failed to remove meal: ' + error.message);
+        console.error('Remove meal error:', error);
+        return;
+      }
+    }
+
     setMealPlan(prev => ({
       ...prev,
       [day]: {
@@ -89,8 +244,11 @@ function MealPlanPage({ recipes = [] }: MealPlanPageProps) {
         [mealType]: null
       }
     }));
-    console.log('MealPlan: removed meal from', day, mealType);
   };
+
+  const now = Date.now();
+  const recentRecipes = availableRecipes.filter(r => now - getCreatedAtTime(r.createdAt) <= 60 * 60 * 1000); // Recipes from last 60 minutes
+  const previousRecipes = availableRecipes.filter(r => now - getCreatedAtTime(r.createdAt) > 60 * 60 * 1000); // Older recipes
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-teal-50 to-green-50 relative overflow-hidden">
@@ -145,6 +303,8 @@ function MealPlanPage({ recipes = [] }: MealPlanPageProps) {
             </span>
           </h1>
           <p className="text-gray-600">Plan your meals for the week and make cooking effortless</p>
+          {error && <p className="text-red-500 text-sm mt-2">{error}</p>}
+          {loading && <p className="text-gray-500 text-sm mt-2">Loading meal plan...</p>}
         </div>
 
         {/* Meal Plan Grid */}
@@ -212,46 +372,133 @@ function MealPlanPage({ recipes = [] }: MealPlanPageProps) {
         </Card>
 
         {/* Recipe Selection Modal */}
-        {selectedMeal && (
-          <Dialog open={!!selectedMeal} onOpenChange={() => setSelectedMeal(null)}>
-            <DialogContent className="sm:max-w-md">
-              <DialogHeader>
-                <DialogTitle>
-                  Select Recipe for {selectedMeal.day} {selectedMeal.type}
-                </DialogTitle>
-                <DialogDescription>
-                  Choose a recipe from your available options to add to your meal plan.
-                </DialogDescription>
-              </DialogHeader>
+        <AnimatePresence>
+          {selectedMeal && (
+            <Dialog open={!!selectedMeal} onOpenChange={() => setSelectedMeal(null)}>
+              <DialogContent className="sm:max-w-md rounded-lg p-6">
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  <DialogClose asChild>
+                    <Button variant="ghost" className="absolute right-4 top-4 rounded-full h-8 w-8 p-0 bg-gray-100 hover:bg-gray-200 transition-colors">
+                      <X className="h-4 w-4 text-gray-600" />
+                      <span className="sr-only">Close</span>
+                    </Button>
+                  </DialogClose>
+                  <DialogHeader>
+                    <DialogTitle className="text-xl font-bold text-gray-900">
+                      Select Recipe for {selectedMeal.day} {selectedMeal.type}
+                    </DialogTitle>
+                    <DialogDescription className="text-sm text-gray-600">
+                      Choose a recipe from your collection to add to your meal plan.
+                    </DialogDescription>
+                  </DialogHeader>
 
-              <div className="grid gap-4">
-                {availableRecipes.map((recipe) => (
-                  <Card
-                    key={recipe.name}
-                    className="cursor-pointer hover:shadow-md transition-all duration-300 border-2 hover:border-emerald-300"
-                    onClick={() => handleMealAssign(selectedMeal.day, selectedMeal.type, recipe)}
-                  >
-                    <CardContent className="p-4 flex items-center space-x-4">
-                      <img
-                        src={recipe.image}
-                        alt={recipe.name}
-                        loading="lazy"
-                        className="w-16 h-16 object-cover rounded"
-                      />
-                      <div className="flex-1">
-                        <h4 className="font-medium text-gray-900">{recipe.name}</h4>
-                        <p className="text-sm text-gray-600">🕒 {recipe.time}</p>
-                        <Badge className="bg-emerald-100 text-emerald-700 text-xs">
-                          {recipe.difficulty}
-                        </Badge>
+                  <Tabs defaultValue="recent" className="mt-4">
+                    <TabsList className="grid w-full grid-cols-2 bg-gray-100 rounded-lg p-1">
+                      <TabsTrigger
+                        value="recent"
+                        className="data-[state=active]:bg-white data-[state=active]:shadow-sm rounded-md text-sm font-medium text-gray-700"
+                      >
+                        Recent
+                      </TabsTrigger>
+                      <TabsTrigger
+                        value="previous"
+                        className="data-[state=active]:bg-white data-[state=active]:shadow-sm rounded-md text-sm font-medium text-gray-700"
+                      >
+                        Previous
+                      </TabsTrigger>
+                    </TabsList>
+                    <TabsContent value="recent">
+                      <div className="grid grid-cols-3 gap-4 overflow-y-auto max-h-[50vh] mt-4 pr-2">
+                        {recentRecipes.length === 0 ? (
+                          <p className="text-gray-500 text-center col-span-3 text-sm">No recent recipes available.</p>
+                        ) : (
+                          recentRecipes.map((recipe) => (
+                            <motion.div
+                              key={recipe.id}
+                              initial={{ opacity: 0, y: 10 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              transition={{ duration: 0.2 }}
+                            >
+                              <Card
+                                className="cursor-pointer hover:shadow-lg transition-all duration-300 border-2 border-gray-200 hover:border-emerald-400 rounded-md"
+                                onClick={() => handleMealAssign(selectedMeal.day, selectedMeal.type, recipe)}
+                              >
+                                <CardContent className="p-3">
+                                  <img
+                                    src={recipe.image || imgImage6}
+                                    alt={recipe.name}
+                                    loading="lazy"
+                                    className="w-full h-16 object-cover rounded-md mb-2"
+                                  />
+                                  <h4 className="font-medium text-sm text-gray-900 truncate">{recipe.name}</h4>
+                                  <p className="text-xs text-gray-600 flex items-center gap-1">
+                                    <Clock className="w-3 h-3" />
+                                    {recipe.time}
+                                  </p>
+                                  <Badge className="bg-emerald-100 text-emerald-700 text-xs mt-1">
+                                    {recipe.difficulty}
+                                  </Badge>
+                                </CardContent>
+                              </Card>
+                            </motion.div>
+                          ))
+                        )}
                       </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            </DialogContent>
-          </Dialog>
-        )}
+                    </TabsContent>
+                    <TabsContent value="previous">
+                      <div className="grid grid-cols-3 gap-4 overflow-y-auto max-h-[50vh] mt-4 pr-2">
+                        {previousRecipes.length === 0 ? (
+                          <p className="text-gray-500 text-center col-span-3 text-sm font-medium">
+                            No previous recipes available.
+                          </p>
+                        ) : (
+                          previousRecipes.map((recipe) => (
+                            <motion.div
+                              key={recipe.id}
+                              initial={{ opacity: 0, y: 10 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              transition={{ duration: 0.3 }}
+                            >
+                              <Card
+                                className="cursor-pointer hover:shadow-xl hover:bg-teal-50/50 transition-all duration-300 border-2 border-gray-200 hover:border-teal-400 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400"
+                                onClick={() => handleMealAssign(selectedMeal.day, selectedMeal.type, recipe)}
+                                role="button"
+                                aria-label={`Select recipe: ${recipe.name}`}
+                              >
+                                <CardContent className="p-4">
+                                  <img
+                                    src={recipe.image || imgImage6}
+                                    alt={recipe.name}
+                                    loading="lazy"
+                                    className="w-full h-20 object-cover rounded-md mb-3"
+                                  />
+                                  <h4 className="font-semibold text-sm text-gray-900 truncate">{recipe.name}</h4>
+                                  <p className="text-xs text-gray-700 flex items-center gap-1 mb-2">
+                                    <Clock className="w-3 h-3 text-teal-600" />
+                                    {recipe.time}
+                                  </p>
+                                  <p className="text-xs text-gray-500 italic mb-2">{formatTimeAgo(recipe.createdAt)}</p>
+                                  <Badge className="bg-teal-100 text-teal-700 text-xs font-medium">
+                                    {recipe.difficulty}
+                                  </Badge>
+                                </CardContent>
+                              </Card>
+                            </motion.div>
+                          ))
+                        )}
+                      </div>
+                    </TabsContent>
+                  </Tabs>
+                </motion.div>
+              </DialogContent>
+            </Dialog>
+          )}
+        </AnimatePresence>
 
         {/* Weekly Summary */}
         <div className="grid md:grid-cols-3 gap-6">
@@ -259,7 +506,7 @@ function MealPlanPage({ recipes = [] }: MealPlanPageProps) {
             <CardContent className="p-6 text-center">
               <Clock className="w-8 h-8 text-emerald-600 mx-auto mb-3" />
               <h3 className="font-bold text-gray-900 mb-2">Total Cook Time</h3>
-              <p className="text-2xl font-bold text-emerald-600">37 min</p>
+              <p className="text-2xl font-bold text-emerald-600">{totalCookTime} min</p>
               <p className="text-sm text-gray-600">This week</p>
             </CardContent>
           </Card>
@@ -268,7 +515,7 @@ function MealPlanPage({ recipes = [] }: MealPlanPageProps) {
             <CardContent className="p-6 text-center">
               <ChefHat className="w-8 h-8 text-emerald-600 mx-auto mb-3" />
               <h3 className="font-bold text-gray-900 mb-2">Planned Meals</h3>
-              <p className="text-2xl font-bold text-emerald-600">3 / 21</p>
+              <p className="text-2xl font-bold text-emerald-600">{plannedMeals} / 21</p>
               <p className="text-sm text-gray-600">Meals scheduled</p>
             </CardContent>
           </Card>
@@ -277,7 +524,7 @@ function MealPlanPage({ recipes = [] }: MealPlanPageProps) {
             <CardContent className="p-6 text-center">
               <Apple className="w-8 h-8 text-emerald-600 mx-auto mb-3" />
               <h3 className="font-bold text-gray-900 mb-2">Ingredients Needed</h3>
-              <p className="text-2xl font-bold text-emerald-600">8</p>
+              <p className="text-2xl font-bold text-emerald-600">{ingredientsNeeded}</p>
               <p className="text-sm text-gray-600">Shopping list items</p>
             </CardContent>
           </Card>
