@@ -26,22 +26,22 @@ interface AboutPageProps {
 function AboutPage({ auth, onNavigate }: AboutPageProps) {
   const developers: Developer[] = [
     {
-      name: "Alex Rodriguez",
+      name: "Krishnan Mahinay",
       role: "Lead Developer & AI Specialist",
-      description: "Passionate about creating intelligent solutions that make everyday cooking easier. Specializes in machine learning and computer vision.",
-      avatar: "AR"
+      description: "Passionate about creating intelligent solutions that make everyday cooking easier.",
+      avatar: "KM"
     },
     {
-      name: "Sarah Chen",
+      name: "James Igcalinos",
       role: "Full-Stack Developer & UX Designer",
-      description: "Focuses on creating seamless user experiences and beautiful interfaces. Expert in React and modern web technologies.",
-      avatar: "SC"
+      description: "Focuses on creating seamless user experiences and beautiful interfaces.",
+      avatar: "JI"
     },
     {
-      name: "Marcus Johnson",
-      role: "Backend Developer & Data Engineer",
-      description: "Builds robust systems that power our recipe recommendations. Specialist in database optimization and API development.",
-      avatar: "MJ"
+      name: "Andre Miles Calledo",
+      role: "Backend Developer",
+      description: "Builds robust systems that power our recipe recommendations.",
+      avatar: "MC"
     }
   ];
 
