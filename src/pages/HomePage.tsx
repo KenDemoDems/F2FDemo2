@@ -44,7 +44,6 @@ function HomePage({ onNavigate, auth, sharedRecipes = [], setSharedRecipes, shar
   const [isDragOver, setIsDragOver] = useState(false);
   const [currentRecipeIndex, setCurrentRecipeIndex] = useState(0);
   const [showUploadOptions, setShowUploadOptions] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [isGeneratingRecipes, setIsGeneratingRecipes] = useState(false);
 
@@ -60,66 +59,6 @@ function HomePage({ onNavigate, auth, sharedRecipes = [], setSharedRecipes, shar
       setSharedRecipes(generatedRecipes);
     }
   }, [generatedRecipes, setSharedRecipes]);
-
-  // Load user data
-  useEffect(() => {
-    const loadUserData = async () => {
-      if (auth.user?.uid) {
-        try {
-          setIsLoading(true);
-          const ingredientsResult = await getUserIngredients(auth.user.uid);
-          let ingredientNames: string[] = [];
-          if (!ingredientsResult.error && ingredientsResult.ingredients.length > 0) {
-            ingredientNames = ingredientsResult.ingredients.map(ing => ing.name);
-            setDetectedIngredients(ingredientNames);
-          } else {
-            ingredientNames = [];
-            setDetectedIngredients(ingredientNames);
-          }
-
-          const recipesResult = await getUserRecipes(auth.user.uid);
-          let recipes: any[] = [];
-          if (!recipesResult.error && recipesResult.recipes.length > 0) {
-            recipes = recipesResult.recipes.map((recipe, index) => ({
-              ...recipe,
-              id: recipe.id || `recipe-${index}`,
-            }));
-          } else if (ingredientNames.length > 0) {
-            const genRecipes = generateRecipes(ingredientNames).map((recipe, index) => ({
-              ...recipe,
-              id: `recipe-${index}`,
-              createdAt: new Date(),
-              usedIngredients: ingredientNames,
-            }));
-            await saveGeneratedRecipes(auth.user.uid, genRecipes);
-            const updatedRecipesResult = await getUserRecipes(auth.user.uid);
-            if (!updatedRecipesResult.error) {
-              recipes = updatedRecipesResult.recipes.map((recipe, index) => ({
-                ...recipe,
-                id: recipe.id || `recipe-${index}`,
-              }));
-            }
-          }
-          setGeneratedRecipes(recipes);
-          if (setSharedRecipes) setSharedRecipes(recipes);
-          if (recipes.length > 0) {
-            setSelectedRecipeId(recipes[0].id);
-          }
-          } catch (error) {
-          console.error('Failed to load user data:', error);
-          setDetectedIngredients(['Apple', 'Tomato', 'Cheese', 'Milk']);
-          setGeneratedRecipes([]);
-          if (setSharedRecipes) setSharedRecipes([]);
-          setSelectedRecipeId(null);
-        } finally {
-          setIsLoading(false);
-        }
-      } else {
-        setIsLoading(false);
-      }
-    };
-    loadUserData();
-  }, [auth.user?.uid]);
 
   const handleImageUpload = async (file: File) => {
     try {
@@ -137,8 +76,14 @@ function HomePage({ onNavigate, auth, sharedRecipes = [], setSharedRecipes, shar
         setIsUploadingImage(false);
         return;
       }
-      const ingredientNames = visionResult.ingredients.map((ing: DetectedIngredient) => ing.name);
-      setDetectedIngredients(ingredientNames);
+      
+      const newIngredientNames = visionResult.ingredients.map((ing: DetectedIngredient) => ing.name);
+      console.log('🔍 Newly detected ingredients:', newIngredientNames);
+      
+      // Merge with existing ingredients (stacking behavior)
+      const mergedIngredients = [...detectedIngredients, ...newIngredientNames];
+      console.log('📦 Total ingredients after merge:', mergedIngredients);
+      
       const firebaseIngredients: Ingredient[] = visionResult.ingredients.map((ing: DetectedIngredient) => ({
         id: '',
         name: ing.name,
@@ -147,30 +92,19 @@ function HomePage({ onNavigate, auth, sharedRecipes = [], setSharedRecipes, shar
         confidence: ing.confidence,
         category: ing.category || 'detected',
       }));
+      
+      // Save to Firebase (all operations)
       await saveDetectedIngredients(auth.user.uid, firebaseIngredients);
-      await updateInventory(auth.user.uid, ingredientNames);
-
-      const generatedRecipesLocal = (await generateRecipesWithImages(ingredientNames)).map((recipe, index) => ({
-        ...recipe,
-        id: `recipe-${index}`,
-        createdAt: new Date(),
-      }));
-
-      await saveGeneratedRecipes(auth.user.uid, generatedRecipesLocal);
-      const updatedRecipesResult = await getUserRecipes(auth.user.uid);
-        if (!updatedRecipesResult.error) {
-          const recipes = updatedRecipesResult.recipes.map((recipe, index) => ({
-            ...recipe,
-            id: recipe.id || `recipe-${index}`,
-          }));
-          setGeneratedRecipes(recipes);
-          if (setSharedRecipes) setSharedRecipes(recipes);
-          if (recipes.length > 0) {
-            setSelectedRecipeId(recipes[0].id);
-          }
-        }
-      console.log('✅ Successfully detected and saved ingredients:', ingredientNames);
+      await updateInventory(auth.user.uid, newIngredientNames);
+      
+      // Update local state with merged ingredients
+      setDetectedIngredients(mergedIngredients);
+      
+      console.log('✅ Successfully detected and merged ingredients. Total:', mergedIngredients.length);
+      console.log('💡 Click "Generate Recipe" button to create recipes from your ingredients');
       setShowUploadOptions(false);
+      
+      // Only stop loading AFTER all ingredients are in the state
       setIsUploadingImage(false);
     } catch (error) {
       console.error('❌ Error analyzing image:', error);
@@ -205,10 +139,6 @@ function HomePage({ onNavigate, auth, sharedRecipes = [], setSharedRecipes, shar
       setCurrentRecipeIndex(Math.max(0, currentRecipeIndex - recipesPerPage));
     }
   };
-
-  if (isLoading) {
-    return <div className="text-center py-12">Loading your data...</div>;
-  }
 
   const recipesPerPage = 4;
   const totalPages = Math.ceil(generatedRecipes.length / recipesPerPage);
