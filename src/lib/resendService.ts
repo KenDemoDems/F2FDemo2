@@ -274,7 +274,7 @@ export const sendExpiryNotification = async (
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          from: 'Fridge2Fork <onboarding@resend.dev>',
+          from: 'Fridge2Fork <notifications@fridge2fork.site>',
           to: [userEmail],
           subject,
           html

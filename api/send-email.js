@@ -44,7 +44,7 @@ export default async function handler(req, res) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        from: 'Fridge2Fork <onboarding@resend.dev>',
+        from: 'Fridge2Fork <notifications@fridge2fork.site>',
         to: [to],
         subject: subject,
         html: html,
