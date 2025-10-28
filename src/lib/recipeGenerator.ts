@@ -249,67 +249,28 @@ export const generateRecipesWithImages = async (
 export const generateRecipesOpenAI = async (
   availableIngredients: string[],
   apiKey: string,
-  maxRecipes: number = 8
+  maxRecipes: number = 6 // 6 recipes for 8-12 second generation
 ): Promise<GeneratedRecipe[]> => {
   // Defensive: Ensure availableIngredients is an array
   if (!Array.isArray(availableIngredients) || availableIngredients.length === 0) return [];
+  
+  const startTime = performance.now();
+  console.log(`⏱️ Starting OpenAI recipe generation for ${maxRecipes} recipes...`);
+  
   try {
-    const prompt = `You are a professional chef. Generate ${maxRecipes} DIFFERENT recipes using these ingredients: ${availableIngredients.join(", ")}.
+    const prompt = `Create ${maxRecipes} recipes using: ${availableIngredients.join(", ")}. 
 
-    CRITICAL REQUIREMENTS:
-    1. Create as many DIFFERENT recipes as possible - maximize variety
-    2. Each recipe must be UNIQUE - different combinations and cooking styles
-    3. Include recipes from various cuisines (Italian, Asian, Mexican, Indian, Mediterranean, American, etc.)
-    4. Use different cooking methods (stir-fry, bake, grill, sauté, steam, boil, roast, fry, etc.)
-    5. Include different meal types (breakfast, lunch, dinner, snacks, appetizers, soups, salads, mains, sides, desserts)
-    6. Vary the ingredient combinations - don't use the same ingredients in every recipe
-    7. You may add common pantry items (water, oil, salt, pepper, etc.) as needed
-    8. NO REPETITION - each recipe should feel completely different from the others
-    
-    GENERATE AS MANY POSSIBLE RECIPES AS YOU CAN (up to ${maxRecipes}) including:
-    - Pasta dishes (various sauces and styles)
-    - Rice dishes (fried rice, risotto, pilaf, etc.)
-    - Egg dishes (omelettes, scrambles, frittatas, etc.)
-    - Chicken dishes (grilled, baked, stir-fried, curried, etc.)
-    - Vegetable dishes (salads, stir-fries, roasted, etc.)
-    - Soups and stews
-    - Appetizers and snacks
-    - Quick meals
-    - Gourmet dishes
-    - Comfort food
-    - Healthy options
-    - Creative fusion recipes
-    
-    Return a JSON object with a single key "recipes" containing an array of ${maxRecipes} recipe objects. Each recipe must include:
-    - name: string (UNIQUE and descriptive recipe name)
-    - image: string (use 'placeholder.jpg')
-    - time: string (e.g., '15 min', '30 min', '1 hour')
-    - difficulty: string ('Easy', 'Medium', or 'Hard')
-    - calories: number (approximate total calories)
-    - nutritionBenefits: string (specific benefits, e.g., 'High in protein', 'Rich in vitamins')
-    - usedIngredients: string[] (ingredients from the provided list that are used)
-    - ingredients: string[] (full list with quantities, e.g., '200g chicken', '2 cups pasta', '1 tbsp olive oil')
-    - instructions: Array<{title: string, detail: string}> (detailed step-by-step cooking instructions)
-
-    Ensure the response is valid JSON with no additional text, comments, or markdown. Example:
-    {
-      "recipes": [
-        {
-          "name": "Creamy Garlic Parmesan Pasta",
-          "image": "placeholder.jpg",
-          "time": "25 min",
-          "difficulty": "Easy",
-          "calories": 450,
-          "nutritionBenefits": "High in protein",
-          "usedIngredients": ["ingredient1", "ingredient2"],
-          "ingredients": ["1 cup ingredient1", "2 tbsp ingredient2"],
-          "instructions": [
-            {"title": "Step 1", "detail": "Do something"},
-            {"title": "Step 2", "detail": "Do another thing"}
-          ]
-        }
-      ]
-    }`;
+JSON format: {"recipes": [...]}
+Each recipe:
+- name: string
+- image: "placeholder.jpg"  
+- time: string (e.g., "20 min")
+- difficulty: "Easy"|"Medium"|"Hard"
+- calories: number
+- nutritionBenefits: string
+- usedIngredients: string[]
+- ingredients: string[] (with amounts)
+- instructions: [{title: string, detail: string}] (3-4 steps)`;
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -318,13 +279,16 @@ export const generateRecipesOpenAI = async (
         'Authorization': `Bearer ${apiKey}`
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        model: 'gpt-3.5-turbo', // FASTEST model tested
         messages: [{ role: 'user', content: prompt }],
         response_format: { type: "json_object" },
-        max_tokens: 6000,
-        temperature: 0.95
+        max_tokens: 1400, // Enough for 4 recipes
+        temperature: 0.5 // Lower = faster generation
       })
     });
+    
+    const apiTime = performance.now() - startTime;
+    console.log(`⏱️ OpenAI API responded in ${(apiTime / 1000).toFixed(2)} seconds`);
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -372,25 +336,37 @@ export const generateRecipesOpenAI = async (
         id: recipe.id || `openai-recipe-${index}`
       }));
 
-    // Fetch images from Pexels for each recipe
+    // Fetch images from Pexels in parallel - NO timeout, maximum speed!
+    console.log(`📸 Fetching Pexels images for ${validRecipes.length} recipes...`);
     const recipesWithImages = await Promise.all(
       validRecipes.map(async (recipe) => {
         try {
           const imageUrl = await fetchFoodImage(cleanRecipeNameForSearch(recipe.name), 'landscape');
+          console.log(`✅ Pexels image loaded: "${recipe.name}"`);
           return {
             ...recipe,
             image: imageUrl
           };
         } catch (error) {
-          console.error(`Failed to fetch image for ${recipe.name}:`, error);
-          return recipe;
+          // Fallback to Unsplash CDN on error
+          console.warn(`⚠️ Pexels failed for "${recipe.name}", using Unsplash`);
+          const fallbackId = ['wtmOw4XdZU8', 'ZuIDLSz3XLg', 'IGfIGP5ONV0', 'CLMpC9UhyTo', '4_jhDO54BYg', 'jpkfc5_d-DI'][Math.floor(Math.random() * 6)];
+          return {
+            ...recipe,
+            image: `https://images.unsplash.com/photo-${fallbackId}?w=400&h=300&fit=crop&auto=format`
+          };
         }
       })
     );
+    
+    console.log(`✅ All ${recipesWithImages.length} images ready`);
 
     // Filter similar recipes to keep at most 2 per similarity group
     const filteredRecipes = filterSimilarRecipes(recipesWithImages, 0.8, 2);
 
+    const totalTime = performance.now() - startTime;
+    console.log(`⏱️ Total generation time: ${(totalTime / 1000).toFixed(2)} seconds for ${filteredRecipes.length} recipes`);
+    
     return filteredRecipes.slice(0, maxRecipes);
   } catch (error) {
     console.error('OpenAI recipe generation failed:', error);
@@ -402,7 +378,7 @@ export const generateRecipesOpenAI = async (
 export const generateRecipesSmart = async (
   availableIngredients: string[] | undefined | null,
   apiKey?: string,
-  maxRecipes: number = 8,
+  maxRecipes: number = 6, // 6 recipes for optimal speed
   minMatchPercentage: number = 30
 ): Promise<GeneratedRecipe[]> => {
   if (apiKey) {
@@ -417,6 +393,83 @@ export const generateRecipesSmart = async (
     console.warn('OpenAI recipe generation returned no valid recipes, falling back to local generation');
   }
   return generateRecipesWithImages(availableIngredients, maxRecipes, minMatchPercentage);
+};
+
+// Batch recipe generation: Generates recipes in batches for faster perceived performance
+// Returns a callback to get the next batch
+export const generateRecipesInBatches = async (
+  availableIngredients: string[],
+  apiKey: string,
+  batchSize: number = 4,
+  totalBatches: number = 3
+): Promise<{
+  firstBatch: GeneratedRecipe[];
+  getNextBatch: () => Promise<GeneratedRecipe[]>;
+  allBatches: Promise<GeneratedRecipe[]>;
+}> => {
+  const allRecipes: GeneratedRecipe[] = [];
+  let currentBatch = 0;
+
+  // Generate first batch immediately
+  console.log(`📦 Generating batch 1/${totalBatches} (${batchSize} recipes)...`);
+  const firstBatch = await generateRecipesOpenAI(availableIngredients, apiKey, batchSize);
+  allRecipes.push(...firstBatch);
+  currentBatch++;
+
+  // Function to get next batch
+  const getNextBatch = async (): Promise<GeneratedRecipe[]> => {
+    if (currentBatch >= totalBatches) {
+      return [];
+    }
+    
+    currentBatch++;
+    console.log(`📦 Generating batch ${currentBatch}/${totalBatches} (${batchSize} recipes)...`);
+    const batch = await generateRecipesOpenAI(availableIngredients, apiKey, batchSize);
+    allRecipes.push(...batch);
+    return batch;
+  };
+
+  // Promise for all remaining batches
+  const allBatches = (async () => {
+    const remainingBatches = totalBatches - 1;
+    for (let i = 0; i < remainingBatches; i++) {
+      await getNextBatch();
+    }
+    return allRecipes;
+  })();
+
+  return {
+    firstBatch,
+    getNextBatch,
+    allBatches
+  };
+};
+
+// Alternative: Generate recipes progressively with callback
+export const generateRecipesProgressive = async (
+  availableIngredients: string[],
+  apiKey: string,
+  totalRecipes: number = 12,
+  batchSize: number = 4,
+  onBatchComplete?: (batch: GeneratedRecipe[], batchNumber: number, totalBatches: number) => void
+): Promise<GeneratedRecipe[]> => {
+  const totalBatches = Math.ceil(totalRecipes / batchSize);
+  const allRecipes: GeneratedRecipe[] = [];
+
+  for (let i = 0; i < totalBatches; i++) {
+    const batchNumber = i + 1;
+    console.log(`📦 Generating batch ${batchNumber}/${totalBatches}...`);
+    
+    const batch = await generateRecipesOpenAI(availableIngredients, apiKey, batchSize);
+    allRecipes.push(...batch);
+    
+    // Call callback if provided
+    if (onBatchComplete) {
+      onBatchComplete(batch, batchNumber, totalBatches);
+    }
+  }
+
+  return allRecipes;
 };
 
 // Generate recipes based on dietary preferences

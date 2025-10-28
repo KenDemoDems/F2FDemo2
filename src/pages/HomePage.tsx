@@ -367,39 +367,72 @@ function HomePage({ onNavigate, auth, sharedRecipes = [], setSharedRecipes, shar
                     console.log('🍳 Generating recipes with', allIngredients.length, 'ingredients:', allIngredients);
                     const { getEnvVar } = await import('../lib/env');
                     const apiKey = getEnvVar('VITE_OPENAI_API_KEY', '');
-                    const recipeResult = await generateRecipesSmart(allIngredients, apiKey, 20, apiKey ? 30 : 10);
-                    console.log('✅ Generated', recipeResult.length, 'recipes:', recipeResult.map(r => r.name));
-                    if (!Array.isArray(recipeResult)) {
-                      console.error('generateRecipesSmart did not return an array:', recipeResult);
+                    
+                    // Use batch generation for faster perceived performance
+                    const { generateRecipesProgressive } = await import('../lib/recipeGenerator');
+                    
+                    if (!apiKey) {
+                      console.error('No OpenAI API key found');
                       return;
                     }
-                    const savedRecipes = [];
-                    for (const recipe of recipeResult) {
-                      const docRef = await addDoc(collection(db, 'generatedRecipes'), {
-                        ...recipe,
-                        userId: auth.user?.uid,
-                        createdAt: Timestamp.now(),
-                      });
-                      await updateDoc(docRef, { id: docRef.id });
-                      savedRecipes.push({
-                        ...recipe,
-                        id: docRef.id,
-                        createdAt: new Date(),
-                      });
-                    }
-                    setGeneratedRecipes(savedRecipes);
-                    if (setSharedRecipes) setSharedRecipes(savedRecipes);
+                    
+                    // Clear previous recipes before starting
+                    setGeneratedRecipes([]);
+                    
+                    let allSavedRecipes: any[] = [];
+                    
+                    const recipeResult = await generateRecipesProgressive(
+                      allIngredients,
+                      apiKey,
+                      12, // Total recipes (3 batches)
+                      4,  // Batch size - 4 recipes per batch
+                      async (batch, batchNumber, totalBatches) => {
+                        // Save and display each batch as it arrives
+                        console.log(`✅ Received batch ${batchNumber}/${totalBatches} with ${batch.length} recipes`);
+                        const savedBatch: any[] = [];
+                        for (const recipe of batch) {
+                          const docRef = await addDoc(collection(db, 'generatedRecipes'), {
+                            ...recipe,
+                            userId: auth.user?.uid,
+                            createdAt: Timestamp.now(),
+                          });
+                          await updateDoc(docRef, { id: docRef.id });
+                          const savedRecipe = {
+                            ...recipe,
+                            id: docRef.id,
+                            createdAt: new Date(),
+                          };
+                          savedBatch.push(savedRecipe);
+                          allSavedRecipes.push(savedRecipe);
+                        }
+                        // FORCE UI UPDATE - create new array reference
+                        const updatedRecipes = [...allSavedRecipes];
+                        setGeneratedRecipes(updatedRecipes);
+                        console.log(`🎨 UI FORCE UPDATE with ${updatedRecipes.length} recipes, IDs:`, updatedRecipes.map(r => r.id));
+                        console.log(`📸 Images:`, updatedRecipes.map(r => ({ name: r.name, image: r.image })));
+                        
+                        // Set first recipe as selected if this is batch 1
+                        if (batchNumber === 1) {
+                          if (updatedRecipes.length > 0) {
+                            setSelectedRecipeId(updatedRecipes[0].id);
+                            console.log(`🎯 Selected first recipe: ${updatedRecipes[0].id}`);
+                          }
+                          // CRITICAL: Stop loading spinner after first batch so recipes display!
+                          setIsGeneratingRecipes(false);
+                          console.log(`🎬 Loading spinner STOPPED - recipes now visible!`);
+                        }
+                      }
+                    );
+                    
+                    console.log('✅ All recipes generated:', recipeResult.length, 'total');
+                    if (setSharedRecipes) setSharedRecipes(allSavedRecipes);
                     setCurrentRecipeIndex(0);
-                    if (savedRecipes.length > 0) {
-                      setSelectedRecipeId(savedRecipes[0].id);
-                    } else {
-                      console.warn('No recipes generated');
-                    }
+                    // Don't need to set selectedRecipeId here - already done in batch 1
                   } catch (error) {
                     console.error('Error generating recipes:', error);
-                  } finally {
-                    setIsGeneratingRecipes(false);
+                    setIsGeneratingRecipes(false); // Stop spinner on error
                   }
+                  // Note: No finally block needed - spinner stops after batch 1
                 }}
                 disabled={(Object.keys(ingredientMap).length === 0 && !auth.user) || isGeneratingRecipes}
               >
@@ -437,7 +470,7 @@ function HomePage({ onNavigate, auth, sharedRecipes = [], setSharedRecipes, shar
           ) : generatedRecipes.length === 0 ? (
             <p className="text-gray-500 text-center py-8">No recipes generated yet. Add ingredients to see suggestions!</p>
           ) : (
-            <div className="grid lg:grid-cols-4 gap-4 lg:gap-8">
+            <div key={`recipes-${generatedRecipes.length}`} className="grid lg:grid-cols-4 gap-4 lg:gap-8">
               <div className="lg:col-span-1 order-2 lg:order-1">
                 <div className="mb-6">
                   <div className="flex flex-col items-center space-y-4 mb-6">

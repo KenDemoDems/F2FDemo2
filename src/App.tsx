@@ -250,7 +250,12 @@ export default function App() {
         userSettings={userSettings}
         onSettingsChange={handleSettingsChange}
       />
-      <HeroSection />
+      <HeroSection 
+        onShowSignup={() => {
+          setLoginDefaultTab('signup');
+          setShowLoginModal(true);
+        }}
+      />
       <SDG12Section 
         onShowLogin={() => setShowLoginModal(true)} 
         onShowSignup={() => {

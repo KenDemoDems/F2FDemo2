@@ -5,7 +5,11 @@ import { Button } from '../ui/button';
 import imgGeminiGeneratedImageTr9Lmtr9Lmtr9Lmt1 from "../../assets/fd3d181f9b03b45cb1db14a2f11330c6278969a7.png";
 import { FloatingElement } from '../common/FloatingElement';
 
-function HeroSection() {
+interface HeroSectionProps {
+  onShowSignup?: () => void;
+}
+
+function HeroSection({ onShowSignup }: HeroSectionProps) {
   return (
     <section className="relative min-h-screen flex items-center justify-center overflow-hidden bg-gradient-to-br from-emerald-50 via-teal-50 to-green-50 dark:bg-gradient-to-br dark:from-gray-900 dark:via-emerald-950/20 dark:to-teal-950/20">
       {/* Animated Background Elements */}
@@ -89,10 +93,7 @@ function HeroSection() {
               <Button
                 variant="outline"
                 className="border-gray-300 dark:border-emerald-500/30 text-gray-700 dark:text-emerald-300 hover:bg-gray-50 dark:hover:bg-emerald-500/10 transition-colors"
-                onClick={() => {
-                  // Trigger login modal to get started
-                  (document.querySelector('nav button') as HTMLButtonElement)?.click();
-                }}
+                onClick={() => onShowSignup?.()}
               >
                 <Sparkles className="w-4 h-4 mr-2" />
                 Get Started!

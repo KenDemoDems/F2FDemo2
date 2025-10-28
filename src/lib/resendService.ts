@@ -233,7 +233,7 @@ export const sendExpiryNotification = async (
                 </div>
                 
                 <div class="cta-container">
-                  <a href="https://fridge2fork.vercel.app/inventory" class="cta">
+                  <a href="https://www.fridge2fork.site/" class="cta">
                     View My Inventory →
                   </a>
                 </div>

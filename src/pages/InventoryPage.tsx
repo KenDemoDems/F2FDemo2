@@ -331,44 +331,74 @@ function InventoryPage({ auth }: InventoryPageProps) {
 
       const { getEnvVar } = await import('../lib/env');
       const apiKey = getEnvVar('VITE_OPENAI_API_KEY', '');
-      const generatedRecipes = await generateRecipesSmart(ingredientNames, apiKey);
-
-      if (!Array.isArray(generatedRecipes)) {
-        console.error('generateRecipesSmart did not return an array:', generatedRecipes);
+      
+      if (!apiKey) {
+        console.error('No OpenAI API key found');
         setIsGeneratingRecipes(false);
         return;
       }
 
-      // Save to Firebase and assign unique IDs
-      const savedRecipes: Recipe[] = [];
-      for (const recipe of generatedRecipes) {
-        const docRef = await addDoc(collection(db, 'generatedRecipes'), {
-          ...recipe,
-          userId: auth.user?.uid,
-          createdAt: Timestamp.now(),
-        });
-        await updateDoc(docRef, { id: docRef.id }); // Store the unique ID in the document
-        savedRecipes.push({
-          ...recipe,
-          id: docRef.id,
-          createdAt: new Date(),
-        } as Recipe);
-      }
-
-      setLeftoverRecipes(savedRecipes);
-
-      // Send email with recipe suggestions
-      if (auth.user?.email) {
-        await sendRecipeSuggestions(auth.user.email, savedRecipes.slice(0, 3), ingredientNames);
-      }
-
-      console.log('✅ Successfully generated leftover recipes:', savedRecipes.length);
+      // Clear previous leftover recipes before starting
+      setLeftoverRecipes([]);
+      
+      let allSavedRecipes: Recipe[] = [];
+      
+      // Use progressive generation for faster perceived performance
+      const { generateRecipesProgressive } = await import('../lib/recipeGenerator');
+      
+      const recipeResult = await generateRecipesProgressive(
+        ingredientNames,
+        apiKey,
+        12, // Total recipes (3 batches)
+        4,  // Batch size - 4 recipes per batch
+        async (batch, batchNumber, totalBatches) => {
+          // Save and display each batch as it arrives
+          console.log(`✅ Received leftover batch ${batchNumber}/${totalBatches} with ${batch.length} recipes`);
+          const savedBatch: Recipe[] = [];
+          for (const recipe of batch) {
+            const docRef = await addDoc(collection(db, 'leftoverRecipes'), {
+              ...recipe,
+              userId: auth.user?.uid,
+              createdAt: Timestamp.now(),
+              isLeftover: true, // Mark as leftover recipe
+            });
+            await updateDoc(docRef, { id: docRef.id });
+            const savedRecipe: Recipe = {
+              ...recipe,
+              id: docRef.id,
+              createdAt: new Date(),
+            } as Recipe;
+            savedBatch.push(savedRecipe);
+            allSavedRecipes.push(savedRecipe);
+          }
+          
+          // FORCE UI UPDATE - create new array reference
+          const updatedRecipes = [...allSavedRecipes];
+          setLeftoverRecipes(updatedRecipes);
+          console.log(`🎨 UI FORCE UPDATE with ${updatedRecipes.length} leftover recipes, IDs:`, updatedRecipes.map(r => r.id));
+          console.log(`📸 Leftover Images:`, updatedRecipes.map(r => ({ name: r.name, image: r.image })));
+          
+          // CRITICAL: Stop loading spinner after first batch so recipes display!
+          if (batchNumber === 1) {
+            setIsGeneratingRecipes(false);
+            console.log(`🎬 Loading spinner STOPPED - leftover recipes now visible!`);
+            
+            // Send email with first batch of recipe suggestions
+            if (auth.user?.email && updatedRecipes.length > 0) {
+              console.log('📧 Sending recipe suggestions email...');
+              await sendRecipeSuggestions(auth.user.email, updatedRecipes.slice(0, 3), ingredientNames);
+            }
+          }
+        }
+      );
+      
+      console.log('✅ All leftover recipes generated:', recipeResult.length, 'total');
     } catch (error) {
       console.error('❌ Error generating leftover recipes:', error);
       setError('Failed to generate leftover recipes');
-    } finally {
-      setIsGeneratingRecipes(false);
+      setIsGeneratingRecipes(false); // Stop spinner on error
     }
+    // Note: No finally block needed - spinner stops after batch 1
   };
 
   const recoverTechniques = [
